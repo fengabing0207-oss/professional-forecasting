@@ -65,6 +65,14 @@ Because training is `date < cutoff` and every scored match has `date >= cutoff`,
 no match is ever scored using information from its own match day or later. The
 backtest asserts this invariant on every run.
 
+Even *universe construction* is leak-free: the "team has ≥ N matches" filter is
+re-derived at each cutoff from past matches only (`filter_min_matches` on the
+training fold), not once over the whole dataset. Teams below threshold as of a
+cutoff are simply absent and their fixtures are recorded un-scorable. (Fixing
+this changed which fixtures are scorable but left the headline metrics
+essentially unchanged — the original global filter was not materially inflating
+the comparison.)
+
 All models implement one small contract (`models/base.py`:
 `fit(train, as_of)` + `predict_proba`) so the engine and metrics never need to
 know which model they are scoring. Every model is compared on exactly the
@@ -82,9 +90,13 @@ fixtures *all* of them could predict.
 - **exact-score NLL** — negative log-likelihood of the realised scoreline, for
   models that emit a full score distribution (the goal models).
 - **calibration curve + ECE** — per-bin predicted-vs-observed frequency.
+- **block bootstrap** — CIs and paired model-vs-model differences that resample
+  whole refit blocks, so correlated within-block fixtures don't inflate apparent
+  precision.
 
 Baselines: **always-uniform** (1/3, 1/3, 1/3) and a **de-vigged market**
-interface (`devig_probs`) — supply decimal odds and the market becomes the bar.
+interface (`devig_probs`) — supply decimal odds and the market becomes the bar
+(odds data not yet wired in; the interface is ready for closing odds).
 
 ## Models compared
 
@@ -105,26 +117,40 @@ interface (`devig_probs`) — supply decimal odds and the market becomes the bar
 | gbm | 1.023 | 0.609 | 0.425 | — | 0.040 | 0.505 |
 | baseline_uniform | 1.099 | 0.667 | 0.477 | — | 0.140 | 0.473 |
 
-Three honest findings, each locatable to a stated assumption:
+Scored on the 1,843 fixtures every model could predict. Differences are read off
+the **block bootstrap** (2,000 resamples of whole refit blocks, so the time
+structure is respected, not assumed-i.i.d.):
 
-1. **The over-dispersion hypothesis is largely wrong — once you condition on
-   team strength.** Raw goal counts *are* over-dispersed (mean ≈ 1.33, variance
-   ≈ 2.07), which motivated the negative-binomial variant. But the fitted NB
-   dispersion lands at `r ≈ 1450` (effectively Poisson), and the NB model is
-   *indistinguishable* from Dixon-Coles on every metric. The marginal
-   over-dispersion is **between-match variation in λ** (strong vs weak teams),
-   not **within-match** over-dispersion. Conditional on each match's learned λ,
-   goals really are ≈Poisson. The earlier "Poisson under-rates blowouts" story
-   is therefore better attributed to the *mean / independence* structure than to
-   the count distribution — the white-box swap made that precise.
-2. **The flexible model over-fits; the parametric one wins.** At a few thousand
-   matches, `gbm` is the *worst* of the four non-trivial models and worse than
-   plain logistic regression. The hand-crafted form features carry a roughly
-   linear signal that the trees then over-fit. This is exactly the "where does
-   flexible ML add value vs over-fit" question the project exists to answer —
-   here, with this much data, it over-fits.
-3. **Dixon-Coles is well calibrated** out-of-sample: ECE 0.020, reliability
-   curve tracks the diagonal across all ten probability bins.
+1. **The negative-binomial variant brings no measurable improvement.** Raw goal
+   counts are over-dispersed (mean ≈ 1.33, variance ≈ 2.07), which motivated
+   trying NB. But the fitted dispersion lands at `r ≈ 1450` (effectively
+   Poisson) and NB is statistically indistinguishable from Dixon-Coles — the
+   paired log-loss difference is `+0.0000`, 95% CI `[-0.0001, +0.0001]`. The
+   reading: the marginal over-dispersion is largely absorbed by between-match
+   variation in team strength (the fitted λ already differs match to match),
+   leaving little extra dispersion for the count distribution to model once that
+   structure is in the mean. The blowout-underestimation noted earlier is
+   therefore better pursued through the mean / independence structure than the
+   count distribution.
+2. **At this sample size and feature set, the structured model beats the
+   flexible one.** `gbm` is the weakest non-trivial model and loses to plain
+   logistic regression; Dixon-Coles beats both decisively (DC − logreg =
+   `-0.136`, 95% CI `[-0.169, -0.098]`; DC − gbm = `-0.162`, CI
+   `[-0.196, -0.124]` — both exclude 0). With only a few thousand matches and a
+   handful of hand-crafted form features, flexible ML under-performs the
+   structured model: when features and samples are limited, model structure can
+   matter more than flexibility. Whether richer features change that is the open
+   question, not a settled verdict on ML.
+3. **Dixon-Coles is well calibrated** out-of-sample: ECE 0.020, the reliability
+   curve tracks the diagonal across all ten probability bins
+   (`figures/calibration.png`).
+
+Figures (regenerated by the report, or `python evaluation/plots.py`):
+
+| | |
+|---|---|
+| `figures/calibration.png` | reliability diagram, all models, ECE in the legend |
+| `figures/rolling_logloss.png` | per-block log loss over backtest time |
 
 ## Layout
 
@@ -137,10 +163,12 @@ models/dixon_coles.py          adapter: Dixon-Coles -> contract
 models/negative_binomial.py    over-dispersed (NB) goal model
 models/ml_baselines.py         logistic + gradient-boosted 1X2 baselines
 backtest/rolling_backtest.py   walk-forward, no-leakage evaluation harness
-evaluation/metrics.py          log loss, Brier, RPS, exact-NLL, calibration, baselines
-scripts/backtest_report.py     the real report: all models, one backtest, one metric suite
+evaluation/metrics.py          log loss, Brier, RPS, exact-NLL, calibration, block bootstrap
+evaluation/plots.py            calibration + rolling-log-loss figures
+scripts/backtest_report.py     the real report: all models, one backtest, metrics + figures
 scripts/fit_and_report.py      original single-fit demo (in-sample; illustrative only)
 data/results.csv               martj42/international_results (public, 1872–present)
+figures/                       generated PNGs (calibration, rolling log loss)
 ```
 
 ## Run
@@ -157,6 +185,8 @@ python scripts/fit_and_report.py      # original in-sample ratings demo
 - [x] rolling-origin backtest — leakage-free walk-forward evaluation
 - [x] unified metric suite — log loss, Brier, RPS, exact-NLL, calibration + baselines
 - [x] negative-binomial variant vs gradient-boosted / logistic baseline
+- [x] leak-free team-universe construction (per-cutoff filter)
+- [x] block-bootstrap CIs + calibration / rolling-log-loss figures
 - [ ] richer per-match ML features (date-exact form, Elo, competition tier)
 
 ## Data & method credits
