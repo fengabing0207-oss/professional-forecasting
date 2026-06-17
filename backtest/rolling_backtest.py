@@ -43,6 +43,7 @@ for _p in (_ROOT, os.path.join(_ROOT, "src")):
         sys.path.insert(0, _p)
 
 from models.base import OUTCOMES, outcome_of, ForecastModel   # noqa: E402
+from data import filter_min_matches                            # noqa: E402  (src on path)
 
 # A factory returns a FRESH, unfitted model for each block (no state bleed).
 ModelFactory = Callable[[], ForecastModel]
@@ -55,6 +56,7 @@ class BacktestConfig:
     step_days: int = 30              # block width = refit cadence
     min_train_matches: int = 300     # skip a block if training fold is too thin
     train_window_days: Optional[int] = None  # None = expanding; else rolling lookback
+    min_matches_per_team: int = 15   # team universe threshold, re-derived per cutoff
     max_goals: int = 10
 
 
@@ -122,6 +124,12 @@ def run_rolling_backtest(
         if cfg.train_window_days is not None:
             lo = cutoff - pd.Timedelta(days=cfg.train_window_days)
             train = train[train["date"] >= lo]
+        # Build the team universe from PAST matches only — re-deriving the
+        # min-matches-per-team filter here (not globally at load time) keeps
+        # universe construction leak-free. Teams that fall below threshold as of
+        # the cutoff are absent from training, so the models return None for
+        # them and the backtest records those fixtures as un-scorable.
+        train = filter_min_matches(train, cfg.min_matches_per_team)
         if len(train) < cfg.min_train_matches:
             continue
 
@@ -168,9 +176,12 @@ if __name__ == "__main__":
     from models.dixon_coles import DixonColesForecaster   # noqa: E402
 
     DATA = os.path.join(_ROOT, "data", "results.csv")
-    matches = load_matches(DATA, since="2021-01-01", min_matches_per_team=15)
+    # load raw (no global team filter); the backtest re-derives the universe
+    # per cutoff so universe construction is leak-free.
+    matches = load_matches(DATA, since="2021-01-01", min_matches_per_team=0)
 
-    cfg = BacktestConfig(test_start="2025-01-01", step_days=45, min_train_matches=300)
+    cfg = BacktestConfig(test_start="2025-01-01", step_days=45, min_train_matches=300,
+                         min_matches_per_team=15)
     print(f"Loaded {len(matches):,} matches "
           f"({matches['date'].min().date()} -> {matches['date'].max().date()})")
     print(f"Backtest: test_start={cfg.test_start} step={cfg.step_days}d "

@@ -12,6 +12,26 @@ import pandas as pd
 import numpy as np
 
 
+def filter_min_matches(df: pd.DataFrame, min_matches_per_team: int) -> pd.DataFrame:
+    """Restrict to teams with enough games to estimate reliably.
+
+    Iteratively drops low-sample teams (dropping one team's matches can push
+    another below the threshold). A pure function of the frame it is handed, so
+    the rolling backtest can call it on a *cutoff-restricted* fold to build the
+    team universe without ever seeing future matches (no selection-time leak).
+    """
+    if min_matches_per_team <= 0:
+        return df.reset_index(drop=True)
+    df = df.copy()
+    while True:
+        counts = pd.concat([df["home"], df["away"]]).value_counts()
+        weak = set(counts[counts < min_matches_per_team].index)
+        if not weak:
+            break
+        df = df[~df["home"].isin(weak) & ~df["away"].isin(weak)].copy()
+    return df.reset_index(drop=True)
+
+
 def load_matches(
     path: str,
     since: str = "2021-01-01",
@@ -24,7 +44,10 @@ def load_matches(
     ----------
     since : keep only matches on/after this date (recency: old form is noise).
     drop_friendlies : if True, exclude friendlies (competitive form only).
-    min_matches_per_team : drop teams with too few games to estimate reliably.
+    min_matches_per_team : drop teams with too few games to estimate reliably,
+        applied over the *whole* loaded span. The rolling backtest passes 0 here
+        and re-derives the team universe per cutoff (leak-free) via
+        ``filter_min_matches`` instead.
     """
     df = pd.read_csv(path, parse_dates=["date"])
     df = df.dropna(subset=["home_score", "away_score"])           # unplayed -> NA
@@ -41,15 +64,7 @@ def load_matches(
     df["hg"] = df["hg"].astype(int)
     df["ag"] = df["ag"].astype(int)
 
-    # iteratively drop low-sample teams (dropping one can drop another below thresh)
-    while True:
-        counts = pd.concat([df["home"], df["away"]]).value_counts()
-        weak = set(counts[counts < min_matches_per_team].index)
-        if not weak:
-            break
-        df = df[~df["home"].isin(weak) & ~df["away"].isin(weak)].copy()
-
-    df = df.reset_index(drop=True)
+    df = filter_min_matches(df, min_matches_per_team)
     return df[["home", "away", "hg", "ag", "date", "neutral", "tournament"]]
 
 
