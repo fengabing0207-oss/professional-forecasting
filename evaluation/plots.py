@@ -11,6 +11,8 @@ command and always reflect the leakage-free evaluation:
    ECE in the legend. On-diagonal = calibrated.
 2. rolling_logloss_plot — per-block log loss over backtest time, one line per
    model. Shows where each model's skill holds or degrades across the test span.
+3. scoreline_heatmap  — side-by-side P(home i, away j) matrices for one fixture;
+   goal models get a heatmap, the 1X2 classifiers a labelled blank panel.
 
 Style is deliberately plain: white background, thin grid, no chartjunk.
 """
@@ -115,6 +117,53 @@ def rolling_logloss_plot(preds: pd.DataFrame, out_path: str,
     ax.legend(frameon=False, fontsize=8, ncol=2)
     fig.autofmt_xdate()
     fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    return out_path
+
+
+def scoreline_heatmap(fitted: dict, home: str, away: str, out_path: str,
+                      neutral: bool = True, max_display: int = 6) -> str:
+    """Side-by-side scoreline probability matrices for one illustrative fixture.
+
+    ``fitted`` maps model name -> fitted model. Goal models (those exposing
+    ``predict_scoreline``) get a heatmap of P(home goals i, away goals j); the
+    1X2 ML classifiers get a blank panel labelled accordingly, because they do
+    not produce a scoreline distribution at all. Visually makes the point that
+    Dixon-Coles and the NB variant are nearly identical.
+    """
+    names = list(fitted)
+    fig, axes = plt.subplots(1, len(names), figsize=(3.5 * len(names), 3.6),
+                             squeeze=False)
+    axes = axes[0]
+    mats = {}
+    for n, m in fitted.items():
+        if hasattr(m, "predict_scoreline"):
+            M = m.predict_scoreline(home, away, neutral)
+            if M is not None:
+                mats[n] = M[:max_display + 1, :max_display + 1]
+    vmax = max((M.max() for M in mats.values()), default=0.1)
+
+    for ax, n in zip(axes, names):
+        if n in mats:
+            M = mats[n]
+            im = ax.imshow(M, origin="lower", cmap="viridis", vmin=0, vmax=vmax)
+            ax.set_xlabel(f"{away} goals")
+            ax.set_ylabel(f"{home} goals")
+            ax.set_xticks(range(max_display + 1))
+            ax.set_yticks(range(max_display + 1))
+            ax.set_title(n, fontsize=10)
+            fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+        else:
+            ax.text(0.5, 0.5, f"{n}\n\n(classifier — no\nscoreline distribution)",
+                    ha="center", va="center", fontsize=9, color="0.4",
+                    transform=ax.transAxes)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            for s in ax.spines.values():
+                s.set_visible(False)
+    fig.suptitle(f"Scoreline probability — {home} vs {away} (neutral)", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
     return out_path
