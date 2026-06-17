@@ -250,3 +250,82 @@ def evaluate_backtest(preds: pd.DataFrame,
     out = pd.DataFrame(rows).sort_values("log_loss").reset_index(drop=True)
     out.attrs["n_shared_fixtures"] = len(shared_keys)
     return out
+
+
+# --------------------------------------------------------------------------
+# block bootstrap — uncertainty that respects the time structure
+# --------------------------------------------------------------------------
+# Plain row-level bootstrap would treat the ~1900 fixtures as independent, but
+# matches within a refit block share one fitted model and one slice of form, so
+# they are correlated. We resample whole BLOCKS (the backtest's refit cutoffs)
+# with replacement instead — a moving-block bootstrap keyed on `cutoff`. This
+# widens the intervals honestly relative to the naive i.i.d. assumption.
+
+_METRIC_FNS = {"log_loss": log_loss, "brier": brier_score, "rps": rps}
+
+
+def _shared_predictable(preds: pd.DataFrame, models: list[str]) -> pd.DataFrame:
+    """Rows for fixtures predictable by *every* model in `models`."""
+    key = ["date", "home", "away", "cutoff"]
+    sub = preds[preds["predictable"] & preds["model"].isin(models)]
+    counts = sub.groupby(key)["model"].nunique()
+    keep = counts[counts == len(models)].index
+    return sub.set_index(key).loc[keep].reset_index()
+
+
+def _metric_on(rows: pd.DataFrame, metric: str) -> float:
+    probs = rows[["p_home", "p_draw", "p_away"]].to_numpy()
+    return _METRIC_FNS[metric](probs, rows["actual"].tolist())
+
+
+def block_bootstrap_ci(preds: pd.DataFrame, model: str, metric: str = "log_loss",
+                       n_boot: int = 2000, alpha: float = 0.05,
+                       seed: int = 0) -> dict:
+    """Block-bootstrap CI for one model's metric. Blocks = backtest cutoffs."""
+    df = preds[(preds["model"] == model) & preds["predictable"]]
+    blocks = [g for _, g in df.groupby("cutoff")]
+    rng = np.random.default_rng(seed)
+    point = _metric_on(df, metric)
+    stats = np.empty(n_boot)
+    B = len(blocks)
+    for b in range(n_boot):
+        idx = rng.integers(0, B, B)
+        stats[b] = _metric_on(pd.concat([blocks[i] for i in idx]), metric)
+    lo, hi = np.percentile(stats, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return {"model": model, "metric": metric, "point": float(point),
+            "lo": float(lo), "hi": float(hi)}
+
+
+def block_bootstrap_diff(preds: pd.DataFrame, model_a: str, model_b: str,
+                         metric: str = "log_loss", n_boot: int = 2000,
+                         alpha: float = 0.05, seed: int = 0) -> dict:
+    """Block-bootstrap CI for the PAIRED difference metric(A) - metric(B).
+
+    Restricted to fixtures both models could predict, so the difference is paired
+    fixture-by-fixture. Resamples whole cutoff blocks. The CI is the headline:
+    if it straddles 0 the models are statistically indistinguishable on this
+    metric; if it excludes 0 one genuinely beats the other. ``frac_a_better`` is
+    the bootstrap share of resamples with A < B (lower = better).
+    """
+    shared = _shared_predictable(preds, [model_a, model_b])
+    by_block = {c: g for c, g in shared.groupby("cutoff")}
+    cutoffs = list(by_block)
+    rng = np.random.default_rng(seed)
+
+    def diff(rows: pd.DataFrame) -> float:
+        a = rows[rows["model"] == model_a]
+        b = rows[rows["model"] == model_b]
+        return _metric_on(a, metric) - _metric_on(b, metric)
+
+    point = diff(shared)
+    stats = np.empty(n_boot)
+    B = len(cutoffs)
+    for k in range(n_boot):
+        idx = rng.integers(0, B, B)
+        sample = pd.concat([by_block[cutoffs[i]] for i in idx])
+        stats[k] = diff(sample)
+    lo, hi = np.percentile(stats, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return {"a": model_a, "b": model_b, "metric": metric,
+            "point_diff": float(point), "lo": float(lo), "hi": float(hi),
+            "frac_a_better": float(np.mean(stats < 0)),
+            "excludes_zero": bool(lo > 0 or hi < 0)}

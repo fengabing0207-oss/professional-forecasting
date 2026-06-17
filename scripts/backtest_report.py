@@ -23,8 +23,15 @@ for _p in (_ROOT, os.path.join(_ROOT, "src")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import warnings
+
 import numpy as np
 import pandas as pd
+
+# benign LBFGS line-search overflow inside LogisticRegression on early/thin
+# folds; results are unaffected, so keep the report output clean.
+warnings.filterwarnings("ignore", message=".*encountered in matmul.*",
+                        category=RuntimeWarning)
 
 from data import load_matches
 from models.dixon_coles import DixonColesForecaster
@@ -32,18 +39,23 @@ from models.negative_binomial import NegativeBinomialForecaster
 from models.ml_baselines import LogisticForecaster, GBMForecaster
 from backtest.rolling_backtest import run_rolling_backtest, BacktestConfig
 from evaluation import metrics as M
+from evaluation import plots
 
 DATA = os.path.join(_ROOT, "data", "results.csv")
 OUTDIR = os.path.join(_ROOT, "backtest_results")
+FIGDIR = os.path.join(_ROOT, "figures")
 
 
 def main():
-    matches = load_matches(DATA, since="2021-01-01", min_matches_per_team=15)
+    # load raw (no global team filter); the backtest re-derives the team
+    # universe per cutoff from past-only matches, so it is leak-free.
+    matches = load_matches(DATA, since="2021-01-01", min_matches_per_team=0)
 
     cfg = BacktestConfig(
         test_start="2024-07-01",   # ~2 yrs of out-of-sample evaluation
         step_days=30,
         min_train_matches=500,
+        min_matches_per_team=15,
     )
     print(f"Data: {len(matches):,} matches "
           f"{matches['date'].min().date()} -> {matches['date'].max().date()}")
@@ -84,7 +96,30 @@ def main():
                                        (sub["actual"] == "home").to_numpy())
     print(f"\nExpected calibration error (home): {ece:.4f}")
 
-    print("\nSaved: predictions_all_models.csv, model_comparison.csv -> backtest_results/")
+    # ---- block-bootstrap uncertainty (respects time structure) -----------
+    print("\n" + "=" * 78)
+    print("BLOCK BOOTSTRAP  (resample whole refit blocks; 2000 reps, 95% CI)")
+    print("=" * 78)
+    ci_rows = [M.block_bootstrap_ci(res.predictions, m, "log_loss", n_boot=2000)
+               for m in ["dixon_coles", "negative_binomial", "logreg", "gbm"]]
+    for r in ci_rows:
+        print(f"  {r['model']:18s} log_loss {r['point']:.4f}  "
+              f"95% CI [{r['lo']:.4f}, {r['hi']:.4f}]")
+
+    print("\nPaired log-loss differences (A - B; negative => A better):")
+    for a, b in [("dixon_coles", "logreg"),
+                 ("dixon_coles", "negative_binomial"),
+                 ("dixon_coles", "gbm")]:
+        d = M.block_bootstrap_diff(res.predictions, a, b, "log_loss", n_boot=2000)
+        verdict = ("significant" if d["excludes_zero"]
+                   else "indistinguishable (CI straddles 0)")
+        print(f"  {a} - {b:18s}: {d['point_diff']:+.4f}  "
+              f"95% CI [{d['lo']:+.4f}, {d['hi']:+.4f}]  -> {verdict}")
+
+    # ---- figures ---------------------------------------------------------
+    figs = plots.make_all_figures(res.predictions, FIGDIR)
+    print("\nFigures -> " + ", ".join(os.path.relpath(f, _ROOT) for f in figs))
+    print("Saved: predictions_all_models.csv, model_comparison.csv -> backtest_results/")
     print("\nNote: exact_nll is defined only for the goal models (full scoreline "
           "distribution); the 1X2 ML models show NaN by design.")
 
