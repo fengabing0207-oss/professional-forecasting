@@ -28,6 +28,7 @@ only until a real model exists.
 - train prop models for corners, cards, shots, offsides, or players
 - claim unsupported prop predictions are model-derived
 - replace the existing research/backtest pipeline
+- submit entries automatically
 
 ## Question bank template
 
@@ -48,6 +49,81 @@ Important fields:
 - `threshold`: numeric line for over/under and margin questions
 - `p_manual`: optional fallback probability in `[0, 1]`
 - `notes`: assumptions or mapping details
+
+## Import copied question text
+
+Phase 1.2 adds a conservative import layer for copied/manual question text,
+structured CSV, and manually saved JSON. It does not scrape websites, log in to
+any service, submit predictions, create odds, create probabilities, or create
+results.
+
+Raw text example:
+
+```bash
+python -m cup.import_questions \
+  --input data/cup/raw_questions.txt \
+  --home-team Norway \
+  --away-team Senegal \
+  --match-id NOR_SEN \
+  --output outputs/cup/question_bank_draft.csv
+```
+
+The draft output uses the question-bank fields plus review metadata:
+
+```text
+question_id,match_id,match_date,home_team,away_team,raw_question,event_type,selection,threshold,player,p_manual,manual_weight,parser_confidence,status,notes
+```
+
+Parser statuses:
+
+- `parsed`: a conservative rule matched clearly
+- `needs_review`: a partial or ambiguous rule matched
+- `unsupported`: reserved for import paths that cannot map an item
+- `error`: parsing failed for that row
+
+Review `outputs/cup/question_bank_draft.csv` before prediction. In particular,
+confirm every `event_type`, `selection`, and `threshold`; fill manual
+probabilities yourself if you want them; and correct any `needs_review` rows.
+The parser output is structure, not a prediction.
+
+CSV imports preserve the current structured workflow and add parser metadata if
+missing:
+
+```bash
+python -m cup.import_questions \
+  --input data/cup/question_bank.csv \
+  --input-format csv \
+  --home-team Norway \
+  --away-team Senegal \
+  --match-id NOR_SEN \
+  --output outputs/cup/question_bank_draft.csv
+```
+
+JSON imports accept either a list of question objects or an object with a
+`questions`, `items`, or `data` list:
+
+```bash
+python -m cup.import_questions \
+  --input data/cup/questions.json \
+  --home-team Norway \
+  --away-team Senegal \
+  --match-id NOR_SEN \
+  --output outputs/cup/question_bank_draft.csv
+```
+
+After review, run prediction with the reviewed draft:
+
+```bash
+python -m cup.predict_cup \
+  --questions outputs/cup/question_bank_draft.csv \
+  --odds data/cup/manual_odds.csv \
+  --model-probs outputs/cup/model_probs.csv \
+  --output outputs/cup/predictions.csv
+```
+
+Raw text parsing is intentionally conservative and requires human review.
+Ambiguous player/team names are marked `needs_review`; unsupported props remain
+market/manual-only.
 
 ## Manual odds template
 
@@ -112,6 +188,31 @@ Default blending:
 
 Override defaults with `--market-weight`, `--model-weight`, `--manual-weight`,
 `--min-prob`, and `--max-prob`.
+
+## Optional goal-model adapter
+
+The normal Phase 1 path remains `--model-probs`. Phase 1.2 also exposes a small
+adapter for code that already has a Dixon-Coles or other goal-model score
+matrix:
+
+```python
+from cup.model_adapter import goal_event_probabilities_from_score_matrix
+
+result = goal_event_probabilities_from_score_matrix(
+    score_matrix,
+    home_team="Norway",
+    away_team="Senegal",
+    event_type="team_win",
+    selection="Norway",
+    threshold=None,
+)
+```
+
+The adapter only supports full-time goal-derived event types. It refuses
+halftime events, corners, shots on target, fouls/cards, offsides, and player
+scorer props with an `unsupported` status. It does not train or load models by
+itself; it is a clean bridge from an already available score matrix into the
+Probability Cup schema.
 
 ## Scoring resolved questions
 
@@ -188,7 +289,7 @@ If pytest is not installed in the active environment, the tests can still be
 smoke-run manually without installing packages:
 
 ```bash
-python -c "import importlib, inspect; mods=['tests.test_market_odds','tests.test_anchor_and_scoring','tests.test_question_mapper','tests.test_predict_cup']; funcs=[]; [funcs.extend([obj for name,obj in inspect.getmembers(importlib.import_module(m), inspect.isfunction) if name.startswith('test_')]) for m in mods]; [f() for f in funcs]; print('manual test runner passed:', len(funcs), 'tests')"
+python -c "import importlib, inspect; mods=['tests.test_market_odds','tests.test_anchor_and_scoring','tests.test_question_mapper','tests.test_predict_cup','tests.test_import_questions','tests.test_model_adapter']; funcs=[]; [funcs.extend([obj for name,obj in inspect.getmembers(importlib.import_module(m), inspect.isfunction) if name.startswith('test_')]) for m in mods]; [f() for f in funcs]; print('manual test runner passed:', len(funcs), 'tests')"
 ```
 
 ## Model-supported event types
