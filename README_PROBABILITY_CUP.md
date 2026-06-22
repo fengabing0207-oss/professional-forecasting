@@ -241,6 +241,120 @@ Scoring formulas:
 
 Positive RBP means the prediction beat the crowd benchmark.
 
+## Real Match Dry Run Workflow
+
+Use this workflow for the next real Probability Cup match without scraping,
+automatic platform interaction, or automatic submission. SportsPredict
+submission remains manual.
+
+1. Copy the questions manually from the SportsPredict / Probability Cup page
+   into a local raw text file, for example:
+
+   ```text
+   data/cup/live/raw_questions.txt
+   ```
+
+2. Run the importer:
+
+   ```bash
+   python -m cup.import_questions \
+     --input data/cup/live/raw_questions.txt \
+     --home-team HOME_TEAM \
+     --away-team AWAY_TEAM \
+     --match-id HOME_AWAY \
+     --output outputs/cup/question_bank_draft.csv
+   ```
+
+3. Manually review `outputs/cup/question_bank_draft.csv`.
+
+   Review these columns especially:
+
+   - `event_type`
+   - `selection`
+   - `threshold`
+   - `player`
+   - `parser_confidence`
+   - `status`
+   - `notes`
+
+4. Copy the reviewed draft into a working file. Prefer an untracked live file:
+
+   ```text
+   data/cup/live/question_bank.csv
+   ```
+
+   Do not commit live match files unless they are explicitly intended as
+   examples. Examples belong under `data/cup/examples/`.
+
+5. Enter available market odds or direct probabilities into:
+
+   ```text
+   data/cup/live/manual_odds.csv
+   ```
+
+6. For goal-derived model-supported questions, optionally provide:
+
+   ```text
+   data/cup/live/model_probs.csv
+   ```
+
+   Columns:
+
+   ```text
+   question_id,p_model,model_family,notes
+   ```
+
+7. Run prediction export:
+
+   ```bash
+   python -m cup.predict_cup \
+     --questions data/cup/live/question_bank.csv \
+     --odds data/cup/live/manual_odds.csv \
+     --model-probs data/cup/live/model_probs.csv \
+     --output outputs/cup/live_predictions.csv
+   ```
+
+8. Manually inspect `outputs/cup/live_predictions.csv`.
+
+   Check:
+
+   - no accidental `missing_probability` for questions you plan to submit
+   - unsupported prop questions are not using the full-time goal model
+   - extreme probabilities are avoided unless justified
+   - `p_final` source/status makes sense
+
+9. Manually submit probabilities to SportsPredict.
+
+   The engine must not automate submission.
+
+10. After match resolution, create:
+
+    ```text
+    data/cup/live/results.csv
+    ```
+
+    Then run:
+
+    ```bash
+    python -m cup.scoring \
+      --predictions outputs/cup/live_predictions.csv \
+      --results data/cup/live/results.csv \
+      --output outputs/cup/live_scored_predictions.csv
+    ```
+
+11. Use scored output to review:
+
+    - Brier by question
+    - RBP if `crowd_brier` is available
+    - which event types worked
+    - which event types were overconfident
+    - whether market-only/manual-only/model-supported statuses behaved as expected
+
+Raw text import is conservative and requires human review. The importer does
+not invent probabilities, odds, or results. Phase 1.2 still does not model
+props. The full-time Dixon-Coles score matrix must not be used for halftime,
+corners, shots on target, fouls/cards, offsides, or player scoring.
+
 ## Norway vs Senegal smoke-test example
 
 The repository includes a realistic-shaped sample under `data/cup/examples/`.

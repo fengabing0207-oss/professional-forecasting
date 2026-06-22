@@ -15,6 +15,7 @@ node_modules/
 dist/
 build/
 outputs/
+data/cup/live/
 .DS_Store
 .idea/
 .vscode/
