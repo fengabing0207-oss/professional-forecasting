@@ -1,0 +1,5 @@
+"""Probability Cup prediction engine."""
+
+from .schema import GOAL_EVENT_TYPES, MARKET_ONLY_EVENT_TYPES, SUPPORTED_STATUSES
+
+__all__ = ["GOAL_EVENT_TYPES", "MARKET_ONLY_EVENT_TYPES", "SUPPORTED_STATUSES"]

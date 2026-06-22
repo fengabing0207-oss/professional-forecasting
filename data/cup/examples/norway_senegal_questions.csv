@@ -1,0 +1,11 @@
+question_id,match_id,match_date,home_team,away_team,raw_question,event_type,selection,threshold,player,p_manual,manual_weight,notes
+q1,norway_senegal_sample,2026-06-22,Norway,Senegal,Will Senegal be called offside 2+ times?,offsides_threshold,Senegal,2,,,,"Dummy sample only; not official odds or result"
+q2,norway_senegal_sample,2026-06-22,Norway,Senegal,Will Norway score more second-half goals than Senegal?,second_half_result,Norway,,,0.52,1.0,"Dummy manual-only probability for smoke testing"
+q3,norway_senegal_sample,2026-06-22,Norway,Senegal,Will there be either a penalty or a red card?,penalty_or_red_card,match,,,,,"Dummy sample only; not official odds or result"
+q4,norway_senegal_sample,2026-06-22,Norway,Senegal,Will Senegal commit more fouls than Norway?,fouls_more_than_opponent,Senegal,,,0.47,1.0,"Dummy manual-only probability for smoke testing"
+q5,norway_senegal_sample,2026-06-22,Norway,Senegal,Will there be 4+ total shots on target in the second half?,shots_on_target_threshold,second_half_total,4,,,,"Dummy sample only; not official odds or result"
+q6,norway_senegal_sample,2026-06-22,Norway,Senegal,Will Norway win the match?,team_win,Norway,,,,,"Goal-derived example with dummy market and model probabilities"
+q7,norway_senegal_sample,2026-06-22,Norway,Senegal,Will the match be tied at halftime?,unsupported_market_only,draw_halftime,,,,,"Deliberately no probability to test missing_probability"
+q8,norway_senegal_sample,2026-06-22,Norway,Senegal,Will there be 9+ total corners?,corners_threshold,total,9,,,,"Dummy sample only; not official odds or result"
+q9,norway_senegal_sample,2026-06-22,Norway,Senegal,Will Norway record 6+ shots on target?,team_shots_on_target_threshold,Norway,6,,0.33,1.0,"Dummy manual-only probability for smoke testing"
+q10,norway_senegal_sample,2026-06-22,Norway,Senegal,Will Sadio Mane score?,player_anytime_scorer,Senegal,,Sadio Mane,,,"Dummy player-prop market-only sample; not official odds or result"

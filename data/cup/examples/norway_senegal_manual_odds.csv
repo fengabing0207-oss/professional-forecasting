@@ -1,0 +1,12 @@
+question_id,market_id,outcome_key,odds_format,odds_value,direct_probability,bookmaker,retrieved_at,notes
+q1,q1_offsides,yes,american,+125,,dummy_sample,2026-06-22T00:00:00Z,Dummy sample odds only
+q1_no,q1_offsides,no,american,-150,,dummy_sample,2026-06-22T00:00:00Z,Companion no-vig row not in question bank
+q3,q3_penalty_red,yes,decimal,3.20,,dummy_sample,2026-06-22T00:00:00Z,Dummy sample odds only
+q3_no,q3_penalty_red,no,decimal,1.40,,dummy_sample,2026-06-22T00:00:00Z,Companion no-vig row not in question bank
+q5,q5_sot_second_half,yes,direct,,0.57,dummy_sample,2026-06-22T00:00:00Z,Dummy direct probability only
+q6,q6_norway_win,yes,decimal,2.10,,dummy_sample,2026-06-22T00:00:00Z,Dummy sample odds only
+q6_no,q6_norway_win,no,decimal,1.75,,dummy_sample,2026-06-22T00:00:00Z,Companion no-vig row not in question bank
+q8,q8_corners,yes,decimal,1.85,,dummy_sample,2026-06-22T00:00:00Z,Dummy sample odds only
+q8_no,q8_corners,no,decimal,1.95,,dummy_sample,2026-06-22T00:00:00Z,Companion no-vig row not in question bank
+q10,q10_mane_scorer,yes,american,+240,,dummy_sample,2026-06-22T00:00:00Z,Dummy player-prop sample odds only
+q10_no,q10_mane_scorer,no,american,-320,,dummy_sample,2026-06-22T00:00:00Z,Companion no-vig row not in question bank
