@@ -170,11 +170,26 @@ The example covers:
 
 - `model_and_market`: Norway win (`team_win`) with dummy market and model inputs
 - `unsupported_market_only`: prop questions using dummy market odds
-- `manual_only`: second-half/fouls/shots examples using dummy manual inputs
-- `missing_probability`: halftime draw question with no probability source
+- `manual_only`: second-half/fouls/shots/halftime examples using dummy manual inputs
 - player prop market-only behavior for Sadio Mane anytime scorer
 
 Generated files live under `outputs/`, which is gitignored.
+
+## Development tests
+
+Install dev-only test dependencies, then run pytest:
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+If pytest is not installed in the active environment, the tests can still be
+smoke-run manually without installing packages:
+
+```bash
+python -c "import importlib, inspect; mods=['tests.test_market_odds','tests.test_anchor_and_scoring','tests.test_question_mapper','tests.test_predict_cup']; funcs=[]; [funcs.extend([obj for name,obj in inspect.getmembers(importlib.import_module(m), inspect.isfunction) if name.startswith('test_')]) for m in mods]; [f() for f in funcs]; print('manual test runner passed:', len(funcs), 'tests')"
+```
 
 ## Model-supported event types
 
@@ -215,6 +230,10 @@ These are not model-supported in Phase 1:
 - `player_anytime_scorer`
 - `first_goal`
 - `second_half_result`
+- `halftime_result`
+- `halftime_draw`
+- `halftime_home_win`
+- `halftime_away_win`
 - `unsupported_market_only`
 
 For these event types, the engine ignores `p_model` and uses market probability

@@ -34,6 +34,10 @@ MARKET_ONLY_EVENT_TYPES = {
     "player_anytime_scorer",
     "first_goal",
     "second_half_result",
+    "halftime_result",
+    "halftime_draw",
+    "halftime_home_win",
+    "halftime_away_win",
     "unsupported_market_only",
 }
 

@@ -69,3 +69,77 @@ def test_supported_event_blends_market_and_model():
     q1 = out.iloc[0]
     assert q1["status"] == "model_and_market"
     assert np.isclose(q1["p_final"], 0.54)
+
+
+def test_halftime_draw_with_manual_probability_is_manual_only():
+    questions = base_questions().iloc[[0]].copy()
+    questions.loc[:, "question_id"] = ["ht_manual"]
+    questions.loc[:, "event_type"] = ["halftime_draw"]
+    questions.loc[:, "selection"] = ["draw_halftime"]
+    questions.loc[:, "p_manual"] = [0.44]
+    odds = pd.DataFrame(columns=[
+        "question_id", "market_id", "outcome_key", "odds_format",
+        "odds_value", "direct_probability", "bookmaker", "retrieved_at", "notes",
+    ])
+    model = pd.DataFrame({
+        "question_id": ["ht_manual"],
+        "p_model": [0.95],
+        "model_family": ["dixon_coles"],
+        "notes": ["should not be used for halftime"],
+    })
+    out = build_predictions(questions, odds, model)
+    row = out.iloc[0]
+    assert row["status"] == "manual_only"
+    assert np.isclose(row["p_final"], 0.44)
+    assert pd.isna(row["p_model"])
+
+
+def test_halftime_draw_with_market_probability_is_market_only_equivalent():
+    questions = base_questions().iloc[[0]].copy()
+    questions.loc[:, "question_id"] = ["ht_market"]
+    questions.loc[:, "event_type"] = ["halftime_draw"]
+    questions.loc[:, "selection"] = ["draw_halftime"]
+    odds = pd.DataFrame({
+        "question_id": ["ht_market"],
+        "market_id": [""],
+        "outcome_key": ["yes"],
+        "odds_format": ["direct"],
+        "odds_value": [""],
+        "direct_probability": [0.38],
+        "bookmaker": ["dummy"],
+        "retrieved_at": [""],
+        "notes": ["dummy"],
+    })
+    model = pd.DataFrame({
+        "question_id": ["ht_market"],
+        "p_model": [0.95],
+        "model_family": ["dixon_coles"],
+        "notes": ["should not be used for halftime"],
+    })
+    out = build_predictions(questions, odds, model)
+    row = out.iloc[0]
+    assert row["status"] == "unsupported_market_only"
+    assert np.isclose(row["p_final"], 0.38)
+    assert pd.isna(row["p_model"])
+
+
+def test_halftime_event_without_probability_is_missing_probability():
+    questions = base_questions().iloc[[0]].copy()
+    questions.loc[:, "question_id"] = ["ht_missing"]
+    questions.loc[:, "event_type"] = ["halftime_home_win"]
+    questions.loc[:, "selection"] = ["home_halftime"]
+    odds = pd.DataFrame(columns=[
+        "question_id", "market_id", "outcome_key", "odds_format",
+        "odds_value", "direct_probability", "bookmaker", "retrieved_at", "notes",
+    ])
+    model = pd.DataFrame({
+        "question_id": ["ht_missing"],
+        "p_model": [0.95],
+        "model_family": ["dixon_coles"],
+        "notes": ["should not be used for halftime"],
+    })
+    out = build_predictions(questions, odds, model)
+    row = out.iloc[0]
+    assert row["status"] == "missing_probability"
+    assert pd.isna(row["p_final"])
+    assert pd.isna(row["p_model"])
