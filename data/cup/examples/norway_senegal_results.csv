@@ -1,0 +1,11 @@
+question_id,actual_result,crowd_brier,notes
+q1,1,0.24,Dummy sample result only
+q2,0,0.25,Dummy sample result only
+q3,0,0.18,Dummy sample result only
+q4,1,0.27,Dummy sample result only
+q5,1,0.21,Dummy sample result only
+q6,1,0.22,Dummy sample result only
+q7,0,,Dummy sample result for missing-probability row
+q8,1,0.20,Dummy sample result only
+q9,0,0.23,Dummy sample result only
+q10,0,0.14,Dummy sample result only

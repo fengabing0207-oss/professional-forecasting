@@ -1,0 +1,2 @@
+question_id,p_model,model_family,notes
+q6,0.58,dixon_coles_score_matrix,"Dummy model probability for smoke testing; not an official forecast"
