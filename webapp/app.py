@@ -4,10 +4,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 from flask import (
+    abort,
     Flask,
     Response,
     flash,
@@ -269,6 +271,28 @@ def create_app() -> Flask:
             hist = snapshot_history(conn, session_id)
         return render_template("history.html", session=session, history=hist)
 
+    @app.get("/sessions/<int:session_id>/download/<kind>/latest")
+    def download_latest_snapshot(session_id: int, kind: str):
+        latest_loaders = {
+            "questions": latest_question_snapshot,
+            "predictions": latest_prediction_snapshot,
+            "scoring": latest_scoring_snapshot,
+        }
+        loader = latest_loaders.get(kind)
+        if loader is None:
+            abort(404)
+        with connect() as conn:
+            session = get_session(conn, session_id)
+            row = loader(conn, session_id)
+        if row is None:
+            abort(404)
+        filename = f"{_safe_filename_part(session['match_id'])}_{kind}_latest.csv"
+        return Response(
+            row["csv_text"],
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
     @app.route("/calibration", methods=["GET", "POST"])
     def calibration():
         csv_text = ""
@@ -380,6 +404,11 @@ def _field_or_upload(field_name: str, file_name: str) -> str:
     if upload and upload.filename:
         return upload.read().decode("utf-8")
     return request.form.get(field_name, "")
+
+
+def _safe_filename_part(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value).strip())
+    return cleaned.strip("._") or "session"
 
 
 def _records(df: Any) -> list[dict[str, Any]]:

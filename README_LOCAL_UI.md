@@ -51,10 +51,14 @@ PROB_CUP_DB_PATH=/path/to/history.sqlite3 python -m webapp.app
 5. Generate predictions and inspect status/risk flags.
 6. Manually submit probabilities to SportsPredict.
 7. After the match, paste or upload results CSV and score the predictions.
-8. Use History to download previous snapshots.
+8. Use the homepage latest CSV links or History to download previous snapshots.
 
 There is a Norway/Senegal dummy sample loader for smoke testing. It is not
 official odds, probabilities, or real performance validation.
+
+The session list shows latest CSV downloads for questions, predictions, and
+scoring after those snapshots exist. Missing snapshot types are shown as muted
+labels instead of links.
 
 ## Settled History Calibration
 

@@ -24,7 +24,7 @@
       <thead>
         <tr>
           <th>Match ID</th><th>Home</th><th>Away</th><th>Date</th>
-          <th>Created</th><th>Updated</th><th>Prediction</th><th>Scoring</th><th></th>
+          <th>Created</th><th>Updated</th><th>Latest CSVs</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -36,8 +36,23 @@
             <td>{{ s.match_date or "" }}</td>
             <td>{{ s.created_at }}</td>
             <td>{{ s.updated_at }}</td>
-            <td>{{ s.latest_prediction_at or "" }}</td>
-            <td>{{ s.latest_scoring_at or "" }}</td>
+            <td class="download-links">
+              {% if s.latest_question_at %}
+                <a href="{{ url_for('download_latest_snapshot', session_id=s.id, kind='questions') }}">Questions CSV</a>
+              {% else %}
+                <span class="muted">No questions yet</span>
+              {% endif %}
+              {% if s.latest_prediction_at %}
+                <a href="{{ url_for('download_latest_snapshot', session_id=s.id, kind='predictions') }}">Predictions CSV</a>
+              {% else %}
+                <span class="muted">No predictions yet</span>
+              {% endif %}
+              {% if s.latest_scoring_at %}
+                <a href="{{ url_for('download_latest_snapshot', session_id=s.id, kind='scoring') }}">Scoring CSV</a>
+              {% else %}
+                <span class="muted">No scoring yet</span>
+              {% endif %}
+            </td>
             <td><a href="{{ url_for('session_detail', session_id=s.id) }}">Open</a></td>
           </tr>
         {% endfor %}
@@ -48,4 +63,3 @@
   {% endif %}
 </section>
 {% endblock %}
-

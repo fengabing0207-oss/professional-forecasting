@@ -50,6 +50,8 @@ def list_sessions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         conn,
         """
         SELECT s.*,
+               (SELECT MAX(created_at) FROM question_snapshots q WHERE q.session_id = s.id)
+                   AS latest_question_at,
                (SELECT MAX(created_at) FROM prediction_snapshots p WHERE p.session_id = s.id)
                    AS latest_prediction_at,
                (SELECT MAX(created_at) FROM scoring_snapshots sc WHERE sc.session_id = s.id)
@@ -148,4 +150,3 @@ def log_run(conn: sqlite3.Connection, level: str, message: str,
     )
     conn.commit()
     return int(cur.lastrowid)
-

@@ -103,6 +103,12 @@ button,
   gap: 12px;
 }
 
+.download-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
