@@ -131,6 +131,10 @@ th {
   background: #f0f3f7;
 }
 
+tr.needs-attention td {
+  background: #fff8e6;
+}
+
 pre {
   overflow-x: auto;
   padding: 12px;

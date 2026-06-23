@@ -198,36 +198,59 @@ def create_app() -> Flask:
             latest_q = latest_question_snapshot(conn, session_id)
             latest_p = latest_prediction_snapshot(conn, session_id)
         question_csv = latest_q["csv_text"] if latest_q else ""
+        odds_csv = ""
+        model_probs_csv = ""
         prediction_csv = latest_p["csv_text"] if latest_p else ""
         summary = _summary_from_snapshot(latest_p)
         risks = engine_bridge.flag_prediction_risks(prediction_csv) if prediction_csv else []
+        workbench_rows = engine_bridge.question_csv_to_manual_probability_rows(question_csv)
         if request.method == "POST":
             question_csv = request.form.get("question_csv", "")
-            odds_csv = _field_or_upload("odds_csv", "odds_file")
-            model_probs_csv = _field_or_upload("model_probs_csv", "model_probs_file")
-            options = {
-                "market_weight": float_option(request.form, "market_weight", 0.70),
-                "model_weight": float_option(request.form, "model_weight", 0.30),
-                "manual_weight": float_option(request.form, "manual_weight", 1.0),
-                "min_prob": float_option(request.form, "min_prob", 0.01),
-                "max_prob": float_option(request.form, "max_prob", 0.99),
-            }
-            try:
-                prediction_csv = engine_bridge.run_prediction_csv(
-                    question_csv, odds_csv, model_probs_csv, options
-                )
-                summary = engine_bridge.summarize_predictions_csv(prediction_csv)
-                risks = engine_bridge.flag_prediction_risks(prediction_csv)
-                with connect() as conn:
-                    save_prediction_snapshot(conn, session_id, prediction_csv, summary)
-                    log_run(conn, "info", "generated predictions", session_id)
-                flash("Predictions saved as a new snapshot.", "success")
-            except Exception as exc:
-                flash(str(exc), "error")
+            odds_csv = request.form.get("odds_csv", "")
+            model_probs_csv = request.form.get("model_probs_csv", "")
+            workbench_rows = engine_bridge.question_csv_to_manual_probability_rows(question_csv)
+            action = request.form.get("action", "generate_predictions")
+            if action == "generate_manual_odds":
+                for row in workbench_rows:
+                    field = f"manual_probability_percent_{row['row_index']}"
+                    row["manual_probability_percent"] = request.form.get(field, "")
+                try:
+                    odds_csv = engine_bridge.manual_probability_rows_to_odds_csv(
+                        workbench_rows,
+                        match_id=session["match_id"],
+                    )
+                    flash("Manual odds CSV generated from entered probabilities.", "success")
+                except Exception as exc:
+                    flash(str(exc), "error")
+            else:
+                odds_csv = _field_or_upload("odds_csv", "odds_file")
+                model_probs_csv = _field_or_upload("model_probs_csv", "model_probs_file")
+                options = {
+                    "market_weight": float_option(request.form, "market_weight", 0.70),
+                    "model_weight": float_option(request.form, "model_weight", 0.30),
+                    "manual_weight": float_option(request.form, "manual_weight", 1.0),
+                    "min_prob": float_option(request.form, "min_prob", 0.01),
+                    "max_prob": float_option(request.form, "max_prob", 0.99),
+                }
+                try:
+                    prediction_csv = engine_bridge.run_prediction_csv(
+                        question_csv, odds_csv, model_probs_csv, options
+                    )
+                    summary = engine_bridge.summarize_predictions_csv(prediction_csv)
+                    risks = engine_bridge.flag_prediction_risks(prediction_csv)
+                    with connect() as conn:
+                        save_prediction_snapshot(conn, session_id, prediction_csv, summary)
+                        log_run(conn, "info", "generated predictions", session_id)
+                    flash("Predictions saved as a new snapshot.", "success")
+                except Exception as exc:
+                    flash(str(exc), "error")
         return render_template(
             "predictions.html",
             session=session,
             question_csv=question_csv,
+            odds_csv=odds_csv,
+            model_probs_csv=model_probs_csv,
+            workbench_rows=workbench_rows,
             prediction_csv=prediction_csv,
             prediction_rows=_preview_csv(prediction_csv, limit=100),
             summary=summary,

@@ -7,6 +7,7 @@ from typing import Any
 
 import pandas as pd
 
+from cup.schema import GOAL_EVENT_TYPES, MARKET_ONLY_EVENT_TYPES, ODDS_COLUMNS
 from cup.import_questions import IMPORT_COLUMNS, import_raw_text
 from cup.predict_cup import OUTPUT_COLUMNS, build_predictions
 from cup.scoring import score_predictions
@@ -60,6 +61,80 @@ def run_prediction_csv(question_csv_text: str, odds_csv_text: str | None = None,
         max_prob=float(opts.get("max_prob", 0.99)),
     )
     return _to_csv_text(predictions[OUTPUT_COLUMNS])
+
+
+def question_csv_to_manual_probability_rows(question_csv_text: str) -> list[dict[str, Any]]:
+    """Return review rows for entering manual probabilities without inventing them."""
+    df = _read_csv_text(question_csv_text)
+    if df.empty:
+        return []
+    rows: list[dict[str, Any]] = []
+    for idx, row in df.iterrows():
+        event_type = _string_value(row.get("event_type"))
+        status = _string_value(row.get("status"))
+        p_manual = _string_value(row.get("p_manual"))
+        reasons = []
+        if event_type in MARKET_ONLY_EVENT_TYPES or event_type not in GOAL_EVENT_TYPES:
+            reasons.append("market/manual-only")
+        if status == "needs_review":
+            reasons.append("needs_review")
+        if not p_manual:
+            reasons.append("p_manual blank")
+        if not p_manual and (event_type in MARKET_ONLY_EVENT_TYPES or event_type not in GOAL_EVENT_TYPES):
+            reasons.append("would be missing_probability without market/manual input")
+        rows.append({
+            "row_index": idx,
+            "question_id": _string_value(row.get("question_id")),
+            "raw_question": _string_value(row.get("raw_question")),
+            "event_type": event_type,
+            "selection": _string_value(row.get("selection")),
+            "p_manual": p_manual,
+            "status": status,
+            "notes": _string_value(row.get("notes")),
+            "manual_probability_percent": "",
+            "highlight": bool(reasons),
+            "highlight_reasons": "; ".join(dict.fromkeys(reasons)),
+        })
+    return rows
+
+
+def normalize_manual_probability_percent(value: Any) -> float | None:
+    """Convert percent-mode input to a probability decimal."""
+    if value is None or str(value).strip() == "":
+        return None
+    text = str(value).strip().replace("%", "")
+    try:
+        percent = float(text)
+    except ValueError as exc:
+        raise ValueError(f"manual probability must be a percent between 0 and 100, got {value!r}") from exc
+    if 0 < percent < 1:
+        raise ValueError("manual probability uses percent mode; enter 51 for 51%, not 0.51")
+    if not 0 <= percent <= 100:
+        raise ValueError(f"manual probability must be between 0 and 100, got {value!r}")
+    return percent / 100.0
+
+
+def manual_probability_rows_to_odds_csv(rows: list[dict[str, Any]], match_id: str | None = None) -> str:
+    """Build direct-probability manual odds CSV from workbench rows."""
+    odds_rows: list[dict[str, Any]] = []
+    prefix = _safe_market_id_part(match_id or "manual")
+    for row in rows:
+        probability = normalize_manual_probability_percent(row.get("manual_probability_percent"))
+        if probability is None:
+            continue
+        question_id = _string_value(row.get("question_id"))
+        odds_rows.append({
+            "question_id": question_id,
+            "market_id": f"{prefix}_{_safe_market_id_part(question_id)}",
+            "outcome_key": "yes",
+            "odds_format": "direct_probability",
+            "odds_value": "",
+            "direct_probability": probability,
+            "bookmaker": "manual",
+            "retrieved_at": "",
+            "notes": "manual probability workbench",
+        })
+    return _to_csv_text(pd.DataFrame(odds_rows, columns=ODDS_COLUMNS))
 
 
 def run_scoring_csv(predictions_csv_text: str, results_csv_text: str) -> str:
@@ -178,3 +253,14 @@ def _compact_questions(df: pd.DataFrame) -> list[dict[str, Any]]:
 
 def _risk(question_id: Any, kind: str, message: str) -> dict[str, Any]:
     return {"question_id": str(question_id), "kind": kind, "message": message}
+
+
+def _string_value(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    return str(value)
+
+
+def _safe_market_id_part(value: str) -> str:
+    cleaned = "".join(ch.lower() if ch.isalnum() else "_" for ch in str(value).strip())
+    return "_".join(part for part in cleaned.split("_") if part) or "manual"

@@ -60,6 +60,21 @@ The session list shows latest CSV downloads for questions, predictions, and
 scoring after those snapshots exist. Missing snapshot types are shown as muted
 labels instead of links.
 
+## Live Prediction Workflow
+
+1. Import questions.
+2. Review question parsing.
+3. Use Manual Probability Workbench to enter your own probabilities.
+4. Generate manual odds CSV automatically.
+5. Run predictions.
+6. Manually submit final probabilities to SportsPredict.
+
+The Manual Probability Workbench uses percent mode. Enter `51` for 51%, which
+is written to the generated manual odds CSV as `0.51`. Blank inputs stay blank.
+Ambiguous decimal percent entries such as `0.51` are rejected; enter `51`
+instead. The workbench does not invent probabilities and does not use
+`parser_confidence` as a probability.
+
 ## Settled History Calibration
 
 The Calibration page accepts manually copied settled-history CSVs and runs local
