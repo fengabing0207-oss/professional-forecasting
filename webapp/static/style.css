@@ -150,6 +150,10 @@ pre {
   background: #eaf8ee;
 }
 
+.hidden-field {
+  display: none;
+}
+
 @media (max-width: 760px) {
   .grid-form,
   .inline-inputs,

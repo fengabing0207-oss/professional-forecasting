@@ -56,6 +56,47 @@ PROB_CUP_DB_PATH=/path/to/history.sqlite3 python -m webapp.app
 There is a Norway/Senegal dummy sample loader for smoke testing. It is not
 official odds, probabilities, or real performance validation.
 
+## Settled History Calibration
+
+The Calibration page accepts manually copied settled-history CSVs and runs local
+diagnostics without saving the uploaded data. Use it after a completed match to
+compare user probability, crowd probability, actual outcome, and platform RBP.
+
+Expected columns:
+
+```text
+session_id
+match_id
+match_date
+home_team
+away_team
+question_id
+raw_question
+event_type
+selection
+user_prob
+crowd_prob
+actual_result
+platform_rbp
+notes
+```
+
+`user_prob` and `crowd_prob` should be decimals between 0 and 1.
+`actual_result` should be 0 or 1. `platform_rbp` is preserved as copied from
+SportsPredict, with numeric summaries computed in separate analysis columns.
+
+The page shows:
+
+- overall RBP, Brier, crowd-edge, and directional-correctness metrics
+- event-type performance
+- probability-bucket performance
+- largest RBP wins and losses
+- largest user/crowd deviations
+- guardrail suggestions for recurring loss patterns
+- a normalized CSV download
+
+Do not commit live settled-history data unless that is explicitly requested.
+
 ## Boundaries
 
 - No scraping.
@@ -77,4 +118,3 @@ git ls-files outputs
 git ls-files .local
 git status
 ```
-

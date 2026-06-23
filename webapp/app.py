@@ -18,6 +18,18 @@ from flask import (
 )
 
 from webapp import engine_bridge
+from webapp.calibration import (
+    compute_brier_columns,
+    find_largest_crowd_deviations,
+    find_largest_rbp_losses,
+    find_largest_rbp_wins,
+    generate_guardrail_suggestions,
+    load_settled_history_csv,
+    summarize_by_event_type,
+    summarize_by_probability_bucket,
+    summarize_settled_performance,
+    to_normalized_csv,
+)
 from webapp.db import connect, init_db
 from webapp.forms import float_option, form_value, require_fields
 from webapp.history import (
@@ -257,6 +269,48 @@ def create_app() -> Flask:
             hist = snapshot_history(conn, session_id)
         return render_template("history.html", session=session, history=hist)
 
+    @app.route("/calibration", methods=["GET", "POST"])
+    def calibration():
+        csv_text = ""
+        normalized_csv = ""
+        results: dict[str, Any] = {}
+        if request.method == "POST":
+            csv_text = _field_or_upload("csv_text", "csv_file")
+            try:
+                df = load_settled_history_csv(csv_text)
+                scored = compute_brier_columns(df)
+                normalized_csv = to_normalized_csv(scored)
+                results = {
+                    "summary": summarize_settled_performance(scored),
+                    "by_event_type": _records(summarize_by_event_type(scored)),
+                    "by_bucket": _records(summarize_by_probability_bucket(scored)),
+                    "largest_wins": _records(_display_rows(find_largest_rbp_wins(scored))),
+                    "largest_losses": _records(_display_rows(find_largest_rbp_losses(scored))),
+                    "largest_deviations": _records(_display_rows(find_largest_crowd_deviations(scored))),
+                    "suggestions": generate_guardrail_suggestions(scored),
+                }
+                flash("Settled history analyzed locally. No data was saved.", "success")
+            except Exception as exc:
+                flash(str(exc), "error")
+        return render_template(
+            "calibration.html",
+            csv_text=csv_text,
+            normalized_csv=normalized_csv,
+            results=results,
+        )
+
+    @app.post("/calibration/download")
+    def download_calibration_csv():
+        normalized_csv = request.form.get("normalized_csv", "")
+        if not normalized_csv.strip():
+            flash("No normalized settled-history CSV is available to download.", "error")
+            return redirect(url_for("calibration"))
+        return Response(
+            normalized_csv,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=settled_history_normalized.csv"},
+        )
+
     @app.get("/sessions/<int:session_id>/download/<kind>/<int:snapshot_id>")
     def download_snapshot(session_id: int, kind: str, snapshot_id: int):
         tables = {
@@ -326,6 +380,42 @@ def _field_or_upload(field_name: str, file_name: str) -> str:
     if upload and upload.filename:
         return upload.read().decode("utf-8")
     return request.form.get(field_name, "")
+
+
+def _records(df: Any) -> list[dict[str, Any]]:
+    return [
+        {key: _format_value(value) for key, value in row.items()}
+        for row in df.to_dict(orient="records")
+    ]
+
+
+def _display_rows(df: Any) -> Any:
+    columns = [
+        "question_id",
+        "event_type",
+        "selection",
+        "raw_question",
+        "user_prob",
+        "crowd_prob",
+        "actual_result",
+        "platform_rbp",
+        "platform_rbp_numeric",
+        "user_brier",
+        "crowd_brier",
+        "abs_user_crowd_deviation",
+    ]
+    return df[[column for column in columns if column in df.columns]]
+
+
+def _format_value(value: Any) -> Any:
+    try:
+        if value != value:
+            return ""
+    except Exception:
+        pass
+    if isinstance(value, float):
+        return round(value, 4)
+    return value
 
 
 app = create_app()

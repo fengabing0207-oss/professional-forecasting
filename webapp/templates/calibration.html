@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Calibration Review{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>Settled History Calibration</h1>
+  <p class="muted">Paste or upload manually copied settled results. Analysis runs locally and is not saved.</p>
+  <form method="post" enctype="multipart/form-data">
+    <label for="csv_text">Settled history CSV</label>
+    <textarea id="csv_text" name="csv_text" rows="12" placeholder="session_id,match_id,match_date,home_team,away_team,question_id,raw_question,event_type,selection,user_prob,crowd_prob,actual_result,platform_rbp,notes">{{ csv_text }}</textarea>
+    <label for="csv_file">Or upload CSV</label>
+    <input id="csv_file" name="csv_file" type="file" accept=".csv,text/csv">
+    <button type="submit">Analyze</button>
+  </form>
+</section>
+
+{% if results %}
+  <section class="band">
+    <h2>Summary</h2>
+    <div class="status-grid">
+      {% for key, value in results.summary.items() %}
+        <div>
+          <strong>{{ key.replace("_", " ") }}</strong><br>
+          {{ value if value is not none else "" }}
+        </div>
+      {% endfor %}
+    </div>
+    <form method="post" action="{{ url_for('download_calibration_csv') }}">
+      <textarea class="hidden-field" name="normalized_csv">{{ normalized_csv }}</textarea>
+      <button type="submit">Download normalized CSV</button>
+    </form>
+  </section>
+
+  <section class="band">
+    <h2>Guardrails</h2>
+    {% if results.suggestions %}
+      <ul>
+        {% for suggestion in results.suggestions %}
+          <li>{{ suggestion }}</li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="muted">No guardrail patterns triggered by this CSV.</p>
+    {% endif %}
+  </section>
+
+  <section class="band">
+    <h2>Event Type Performance</h2>
+    {% set rows = results.by_event_type %}
+    {% include "partials/table_preview.html" %}
+  </section>
+
+  <section class="band">
+    <h2>Probability Buckets</h2>
+    {% set rows = results.by_bucket %}
+    {% include "partials/table_preview.html" %}
+  </section>
+
+  {% for title, rows in [
+    ("Largest Wins", results.largest_wins),
+    ("Largest Losses", results.largest_losses),
+    ("Largest Crowd Deviations", results.largest_deviations)
+  ] %}
+    <section class="band">
+      <h2>{{ title }}</h2>
+      {% include "partials/table_preview.html" %}
+    </section>
+  {% endfor %}
+{% endif %}
+{% endblock %}
