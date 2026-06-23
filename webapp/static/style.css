@@ -1,0 +1,163 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: #20252d;
+  background: #f6f7f9;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.45;
+}
+
+.topbar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #d8dee8;
+}
+
+.brand {
+  color: #1d4f8f;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.band {
+  margin-bottom: 20px;
+  padding: 18px;
+  background: #ffffff;
+  border: 1px solid #d8dee8;
+  border-radius: 6px;
+}
+
+h1, h2 {
+  margin: 0 0 12px;
+}
+
+.muted {
+  color: #677283;
+}
+
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+input,
+textarea {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  border: 1px solid #b9c3d1;
+  border-radius: 4px;
+  font: inherit;
+}
+
+textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+button,
+.actions a {
+  display: inline-block;
+  margin: 8px 8px 0 0;
+  padding: 8px 12px;
+  color: #ffffff;
+  background: #1d4f8f;
+  border: 0;
+  border-radius: 4px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.inline-inputs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 8px;
+  border-bottom: 1px solid #e4e9f0;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: #f0f3f7;
+}
+
+pre {
+  overflow-x: auto;
+  padding: 12px;
+  background: #f7f8fa;
+  border: 1px solid #e1e6ee;
+}
+
+.messages {
+  margin-bottom: 16px;
+}
+
+.message {
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: #eef5ff;
+}
+
+.message.error {
+  background: #ffecec;
+}
+
+.message.success {
+  background: #eaf8ee;
+}
+
+@media (max-width: 760px) {
+  .grid-form,
+  .inline-inputs,
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .span-2 {
+    grid-column: auto;
+  }
+}
