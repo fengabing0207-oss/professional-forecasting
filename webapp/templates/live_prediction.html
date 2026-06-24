@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Live Prediction Mode{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>Live Prediction Mode</h1>
+  <p>{{ session.home_team }} vs {{ session.away_team }}{% if session.match_date %} · {{ session.match_date }}{% endif %} · {{ session.match_id }}</p>
+  <p class="muted">{{ completion_count }} / {{ total_questions }} final probabilities entered{% if total_questions %} · Question 1 / {{ total_questions }}{% endif %}</p>
+  <nav class="actions">
+    <a href="{{ url_for('session_detail', session_id=session.id) }}">Session</a>
+    <a href="{{ url_for('import_questions', session_id=session.id) }}">Import Questions</a>
+    <a href="{{ url_for('predictions', session_id=session.id) }}">CSV Predictions</a>
+  </nav>
+</section>
+
+{% if not has_questions %}
+  <section class="band">
+    <h2>No Questions Yet</h2>
+    <p class="muted">Import or review up to 10 questions before using live mode.</p>
+    <div class="actions">
+      <a href="{{ url_for('import_questions', session_id=session.id) }}">Import Questions</a>
+    </div>
+  </section>
+{% else %}
+  <form method="post">
+    <section class="band">
+      <h2>Match Context</h2>
+      <div class="grid-form">
+        <label>Favorite team <input name="favorite_team" value="{{ match_context.favorite_team }}" placeholder="optional"></label>
+        <label>Expected match script <input name="expected_match_script" value="{{ match_context.expected_match_script }}" placeholder="wide, open late, strong favorite"></label>
+        <label>Tournament context <input name="tournament_context" value="{{ match_context.tournament_context }}" placeholder="must-win, knockout, low stakes"></label>
+        <label>Player context <input name="player_context" value="{{ match_context.player_context }}" placeholder="primary attacker, rotation risk"></label>
+        <label class="span-2">User notes <input name="user_notes" value="{{ match_context.user_notes }}"></label>
+      </div>
+    </section>
+
+    {% set exposure = [] %}
+    {% for row in assistant_rows %}
+      {% for warning in row.exposure_warnings %}
+        {% if warning not in exposure %}{% set _ = exposure.append(warning) %}{% endif %}
+      {% endfor %}
+    {% endfor %}
+    {% if exposure %}
+      <section class="band message error">
+        {% for warning in exposure %}
+          <strong>{{ warning }}</strong><br>
+        {% endfor %}
+      </section>
+    {% endif %}
+
+    <section class="band">
+      <h2>Question Navigation</h2>
+      <div class="question-nav">
+        {% for row in assistant_rows %}
+          <a href="#q{{ loop.index }}">Q{{ loop.index }}</a>
+        {% endfor %}
+        <span class="muted">{{ missing_count }} missing</span>
+      </div>
+    </section>
+
+    {% for row in assistant_rows %}
+      <section id="q{{ loop.index }}" class="band live-card">
+        <div class="live-card-top">
+          <strong>Question {{ loop.index }} / {{ total_questions }}</strong>
+          <span class="muted">{{ row.question_id }}</span>
+        </div>
+        <h2>{{ row.raw_question }}</h2>
+        <div class="live-meta">
+          <div><strong>Event</strong><br>{{ row.event_type }}</div>
+          <div><strong>Selection</strong><br>{{ row.selection }}</div>
+          <div><strong>Threshold</strong><br>{{ row.threshold }}</div>
+          <div><strong>Player</strong><br>{{ row.player }}</div>
+          <div><strong>Period</strong><br>{{ row.period }}</div>
+          <div><strong>Parser</strong><br>{{ row.parser_status }}</div>
+          <div><strong>Support</strong><br>{{ row.model_support_status }}</div>
+        </div>
+        <div class="assistant-panel">
+          <div><strong>Suggested</strong><br>{{ row.suggested_probability_percent if row.suggested_probability_percent != "" else "Needs review" }}{% if row.suggested_probability_percent != "" %}%{% endif %}</div>
+          <div><strong>Range</strong><br>{{ row.suggested_range }}</div>
+          <div><strong>Confidence</strong><br>{{ row.confidence }}</div>
+          <div class="span-2"><strong>Reasoning</strong><br>{{ row.reasoning }}</div>
+          <div><strong>Risk Flags</strong><br>{{ row.risk_flags | join(", ") }}</div>
+        </div>
+        {% if row.exposure_warnings %}
+          <p class="message error">{{ row.exposure_warnings | join(" ") }}</p>
+        {% endif %}
+        <div class="final-probability">
+          <label>Final probability %
+            <input name="final_probability_percent_{{ loop.index0 }}" type="number" min="0" max="100" step="1" inputmode="decimal" value="{{ row.final_probability_percent }}" placeholder="51">
+          </label>
+          {% if row.final_probability_percent or row.suggested_probability_percent != "" %}
+            <input type="range" min="0" max="100" step="1" value="{{ row.final_probability_percent or row.suggested_probability_percent }}" aria-label="visual slider for question {{ loop.index }}">
+          {% else %}
+            <input type="range" min="0" max="100" step="1" value="0" disabled aria-label="no suggested probability for question {{ loop.index }}">
+          {% endif %}
+        </div>
+        <nav class="actions">
+          {% if not loop.first %}<a href="#q{{ loop.index - 1 }}">Previous</a>{% endif %}
+          {% if not loop.last %}<a href="#q{{ loop.index + 1 }}">Next</a>{% endif %}
+        </nav>
+      </section>
+    {% endfor %}
+
+    <section class="band">
+      <h2>Finalize</h2>
+      <p class="muted">Blank final probabilities stay blank. This creates a local prediction snapshot only; submission remains manual.</p>
+      <button type="submit">Save Final Probabilities and Generate Predictions</button>
+    </section>
+  </form>
+{% endif %}
+
+{% if submission_sheet %}
+  <section class="band">
+    <h2>Manual Submission Sheet</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Question</th><th>Raw question</th><th>Final probability %</th></tr></thead>
+        <tbody>
+          {% for row in submission_sheet %}
+            <tr><td>{{ row.question_id }}</td><td>{{ row.raw_question }}</td><td>{{ row.final_probability_percent }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+{% if prediction_csv %}
+  <section class="band">
+    <h2>Prediction Snapshot</h2>
+    <pre>{{ summary | tojson(indent=2) }}</pre>
+    <textarea rows="12" readonly>{{ prediction_csv }}</textarea>
+  </section>
+{% endif %}
+{% endblock %}

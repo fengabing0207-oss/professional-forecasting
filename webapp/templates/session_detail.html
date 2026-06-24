@@ -8,6 +8,7 @@
   <nav class="actions">
     <a href="{{ url_for('import_questions', session_id=session.id) }}">Import Questions</a>
     <a href="{{ url_for('review_questions', session_id=session.id) }}">Review Questions</a>
+    <a href="{{ url_for('live_prediction', session_id=session.id) }}">Live Prediction Mode</a>
     <a href="{{ url_for('predictions', session_id=session.id) }}">Predictions</a>
     <a href="{{ url_for('scoring', session_id=session.id) }}">Scoring</a>
     <a href="{{ url_for('history', session_id=session.id) }}">History</a>
@@ -27,4 +28,3 @@
   </section>
 {% endfor %}
 {% endblock %}
-

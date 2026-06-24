@@ -20,6 +20,7 @@ from flask import (
 )
 
 from webapp import engine_bridge
+from webapp import prediction_assistant
 from webapp.calibration import (
     compute_brier_columns,
     find_largest_crowd_deviations,
@@ -257,6 +258,52 @@ def create_app() -> Flask:
             risks=risks,
         )
 
+    @app.route("/sessions/<int:session_id>/live", methods=["GET", "POST"])
+    def live_prediction(session_id: int):
+        with connect() as conn:
+            session = get_session(conn, session_id)
+            latest_q = latest_question_snapshot(conn, session_id)
+        question_csv = latest_q["csv_text"] if latest_q else ""
+        match_context = _live_match_context(request.form if request.method == "POST" else {})
+        assistant_rows = []
+        prediction_csv = ""
+        submission_sheet: list[dict[str, str]] = []
+        summary: dict[str, Any] = {}
+        if request.method == "POST" and question_csv:
+            try:
+                assistant_rows = _live_assistant_rows(question_csv, match_context, request.form)
+                odds_csv = prediction_assistant.assistant_rows_to_manual_odds_csv(
+                    assistant_rows,
+                    match_id=session["match_id"],
+                )
+                prediction_csv = engine_bridge.run_prediction_csv(question_csv, odds_csv)
+                summary = engine_bridge.summarize_predictions_csv(prediction_csv)
+                with connect() as conn:
+                    save_prediction_snapshot(conn, session_id, prediction_csv, summary)
+                    log_run(conn, "info", "generated live-mode predictions", session_id)
+                submission_sheet = _submission_sheet(assistant_rows)
+                flash("Live predictions saved as a new prediction snapshot.", "success")
+            except Exception as exc:
+                flash(str(exc), "error")
+                assistant_rows = _live_assistant_rows(question_csv, match_context, {})
+        else:
+            assistant_rows = _live_assistant_rows(question_csv, match_context, {})
+        total_questions = len(assistant_rows)
+        completion_count = sum(1 for row in assistant_rows if row.get("final_probability_percent"))
+        return render_template(
+            "live_prediction.html",
+            session=session,
+            has_questions=bool(question_csv.strip()),
+            match_context=match_context,
+            assistant_rows=assistant_rows,
+            total_questions=total_questions,
+            completion_count=completion_count,
+            missing_count=total_questions - completion_count,
+            submission_sheet=submission_sheet,
+            prediction_csv=prediction_csv,
+            summary=summary,
+        )
+
     @app.route("/sessions/<int:session_id>/scoring", methods=["GET", "POST"])
     def scoring(session_id: int):
         with connect() as conn:
@@ -420,6 +467,41 @@ def _summary_from_snapshot(snapshot: Any) -> dict[str, Any]:
         return json.loads(snapshot["summary_json"])
     except Exception:
         return {}
+
+
+def _live_match_context(form: Any) -> dict[str, str]:
+    return {
+        "favorite_team": form_value(form, "favorite_team") if form else "",
+        "expected_match_script": form_value(form, "expected_match_script") if form else "",
+        "tournament_context": form_value(form, "tournament_context") if form else "",
+        "player_context": form_value(form, "player_context") if form else "",
+        "user_notes": form_value(form, "user_notes") if form else "",
+    }
+
+
+def _live_assistant_rows(question_csv: str, match_context: dict[str, str], form: Any) -> list[dict[str, Any]]:
+    question_rows = _preview_csv(question_csv, limit=10)
+    rows = []
+    for index, row in enumerate(question_rows):
+        row["final_probability_percent"] = form.get(f"final_probability_percent_{index}", "") if form else ""
+        rows.append(prediction_assistant.suggest_probability_for_question(row, match_context))
+    exposure_warnings = prediction_assistant.detect_match_script_exposure(rows)
+    if exposure_warnings:
+        for row in rows:
+            row["exposure_warnings"] = exposure_warnings
+    return rows
+
+
+def _submission_sheet(rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [
+        {
+            "question_id": str(row.get("question_id", "")),
+            "raw_question": str(row.get("raw_question", "")),
+            "final_probability_percent": str(row.get("final_probability_percent", "")),
+        }
+        for row in rows
+        if row.get("final_probability_percent")
+    ]
 
 
 def _field_or_upload(field_name: str, file_name: str) -> str:
