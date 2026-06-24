@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Session {{ session.match_id }}{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>{{ session.match_id }}</h1>
+  <p>{{ session.home_team }} vs {{ session.away_team }}{% if session.match_date %} · {{ session.match_date }}{% endif %}</p>
+  {% if session.notes %}<p class="muted">{{ session.notes }}</p>{% endif %}
+  <nav class="actions">
+    <a href="{{ url_for('import_questions', session_id=session.id) }}">Import Questions</a>
+    <a href="{{ url_for('review_questions', session_id=session.id) }}">Review Questions</a>
+    <a href="{{ url_for('predictions', session_id=session.id) }}">Predictions</a>
+    <a href="{{ url_for('scoring', session_id=session.id) }}">Scoring</a>
+    <a href="{{ url_for('history', session_id=session.id) }}">History</a>
+  </nav>
+</section>
+
+<section class="band status-grid">
+  <div><strong>Questions</strong><br>{{ "imported" if question else "missing" }}</div>
+  <div><strong>Predictions</strong><br>{{ "generated" if prediction else "missing" }}</div>
+  <div><strong>Scoring</strong><br>{{ "generated" if scoring else "missing" }}</div>
+</section>
+
+{% for title, rows in [("Latest questions", question_preview), ("Latest predictions", prediction_preview), ("Latest scoring", scoring_preview)] %}
+  <section class="band">
+    <h2>{{ title }}</h2>
+    {% include "partials/table_preview.html" %}
+  </section>
+{% endfor %}
+{% endblock %}
+

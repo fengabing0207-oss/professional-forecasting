@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Predictions{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>Predictions</h1>
+  <form method="post" enctype="multipart/form-data">
+    <label>Question CSV</label>
+    <textarea name="question_csv" rows="10">{{ question_csv }}</textarea>
+
+    <section class="workbench">
+      <h2>Manual Probability Workbench</h2>
+      {% if workbench_rows %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Question</th>
+                <th>Event</th>
+                <th>Selection</th>
+                <th>Current p_manual</th>
+                <th>Status</th>
+                <th>Notes</th>
+                <th>Manual probability %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in workbench_rows %}
+                <tr class="{{ 'needs-attention' if row.highlight else '' }}">
+                  <td>
+                    <strong>{{ row.question_id }}</strong><br>
+                    {{ row.raw_question }}
+                    {% if row.highlight_reasons %}
+                      <br><span class="muted">{{ row.highlight_reasons }}</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ row.event_type }}</td>
+                  <td>{{ row.selection }}</td>
+                  <td>{{ row.p_manual }}</td>
+                  <td>{{ row.status }}</td>
+                  <td>{{ row.notes }}</td>
+                  <td>
+                    <input
+                      name="manual_probability_percent_{{ row.row_index }}"
+                      value="{{ row.manual_probability_percent }}"
+                      placeholder="51"
+                      inputmode="decimal"
+                    >
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button type="submit" name="action" value="generate_manual_odds">Generate manual odds CSV</button>
+      {% else %}
+        <p class="muted">No questions loaded yet.</p>
+      {% endif %}
+    </section>
+
+    <label>Manual odds CSV</label>
+    <textarea name="odds_csv" rows="8" placeholder="question_id,market_id,outcome_key,odds_format,odds_value,direct_probability,bookmaker,retrieved_at,notes">{{ odds_csv }}</textarea>
+    <input type="file" name="odds_file" accept=".csv">
+    <label>Model probabilities CSV (optional)</label>
+    <textarea name="model_probs_csv" rows="5" placeholder="question_id,p_model,model_family,notes">{{ model_probs_csv }}</textarea>
+    <input type="file" name="model_probs_file" accept=".csv">
+    <div class="inline-inputs">
+      <label>Market weight <input name="market_weight" value="0.70"></label>
+      <label>Model weight <input name="model_weight" value="0.30"></label>
+      <label>Manual weight <input name="manual_weight" value="1.0"></label>
+      <label>Min prob <input name="min_prob" value="0.01"></label>
+      <label>Max prob <input name="max_prob" value="0.99"></label>
+    </div>
+    <button type="submit" name="action" value="generate_predictions">Generate predictions</button>
+  </form>
+</section>
+
+{% if prediction_csv %}
+  <section class="band">
+    <h2>Summary</h2>
+    <pre>{{ summary | tojson(indent=2) }}</pre>
+    <h2>Risk Flags</h2>
+    <pre>{{ risks | tojson(indent=2) }}</pre>
+    <h2>Predictions CSV</h2>
+    <textarea rows="12" readonly>{{ prediction_csv }}</textarea>
+    {% set rows = prediction_rows %}
+    {% include "partials/table_preview.html" %}
+  </section>
+{% endif %}
+{% endblock %}

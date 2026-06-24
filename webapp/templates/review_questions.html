@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Review Questions{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>Review Questions</h1>
+  <p class="muted">Edit the CSV manually, then save a new question snapshot.</p>
+  <form method="post">
+    <textarea name="csv_text" rows="20">{{ csv_text }}</textarea>
+    <button type="submit">Save reviewed CSV</button>
+  </form>
+</section>
+{% endblock %}
+

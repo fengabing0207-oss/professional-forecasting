@@ -9,7 +9,7 @@ import pandas as pd
 from evaluation.metrics import devig_probs
 
 
-SUPPORTED_ODDS_FORMATS = {"decimal", "american", "probability", "direct"}
+SUPPORTED_ODDS_FORMATS = {"decimal", "american", "probability", "direct", "direct_probability"}
 
 
 def _is_missing(value: object) -> bool:

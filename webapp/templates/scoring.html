@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Scoring{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>Scoring</h1>
+  <p class="muted">Brier is meaningful only with real resolved results. RBP requires real crowd_brier. Dummy samples are integration tests, not predictive validation.</p>
+  <form method="post" enctype="multipart/form-data">
+    <label>Predictions CSV</label>
+    <textarea name="predictions_csv" rows="10">{{ predictions_csv }}</textarea>
+    <label>Results CSV</label>
+    <textarea name="results_csv" rows="6" placeholder="question_id,actual_result,crowd_brier,notes"></textarea>
+    <input type="file" name="results_file" accept=".csv">
+    <button type="submit">Score predictions</button>
+  </form>
+</section>
+
+{% if scoring_csv %}
+  <section class="band">
+    <h2>Summary</h2>
+    <pre>{{ summary | tojson(indent=2) }}</pre>
+    <h2>Scored CSV</h2>
+    <textarea rows="12" readonly>{{ scoring_csv }}</textarea>
+    {% set rows = scoring_rows %}
+    {% include "partials/table_preview.html" %}
+  </section>
+{% endif %}
+{% endblock %}
+

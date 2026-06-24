@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Sessions{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>Sessions</h1>
+  <form class="grid-form" method="post" action="{{ url_for('create_session_route') }}">
+    <label>Home team <input name="home_team" required></label>
+    <label>Away team <input name="away_team" required></label>
+    <label>Match ID <input name="match_id" required></label>
+    <label>Match date <input name="match_date" placeholder="YYYY-MM-DD"></label>
+    <label class="span-2">Notes <input name="notes"></label>
+    <button type="submit">Create session</button>
+  </form>
+  <form method="post" action="{{ url_for('load_sample_session') }}">
+    <button type="submit">Load Norway/Senegal dummy smoke test</button>
+    <span class="muted">Dummy data only; not official odds/probabilities/results.</span>
+  </form>
+</section>
+
+<section class="band">
+  <h2>History</h2>
+  {% if sessions %}
+    <table>
+      <thead>
+        <tr>
+          <th>Match ID</th><th>Home</th><th>Away</th><th>Date</th>
+          <th>Created</th><th>Updated</th><th>Latest CSVs</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in sessions %}
+          <tr>
+            <td>{{ s.match_id }}</td>
+            <td>{{ s.home_team }}</td>
+            <td>{{ s.away_team }}</td>
+            <td>{{ s.match_date or "" }}</td>
+            <td>{{ s.created_at }}</td>
+            <td>{{ s.updated_at }}</td>
+            <td class="download-links">
+              {% if s.latest_question_at %}
+                <a href="{{ url_for('download_latest_snapshot', session_id=s.id, kind='questions') }}">Questions CSV</a>
+              {% else %}
+                <span class="muted">No questions yet</span>
+              {% endif %}
+              {% if s.latest_prediction_at %}
+                <a href="{{ url_for('download_latest_snapshot', session_id=s.id, kind='predictions') }}">Predictions CSV</a>
+              {% else %}
+                <span class="muted">No predictions yet</span>
+              {% endif %}
+              {% if s.latest_scoring_at %}
+                <a href="{{ url_for('download_latest_snapshot', session_id=s.id, kind='scoring') }}">Scoring CSV</a>
+              {% else %}
+                <span class="muted">No scoring yet</span>
+              {% endif %}
+            </td>
+            <td><a href="{{ url_for('session_detail', session_id=s.id) }}">Open</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="muted">No sessions yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

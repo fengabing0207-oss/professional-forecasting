@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Import Questions{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>Import Questions</h1>
+  <p class="muted">Paste copied questions. The importer structures text only; it does not create probabilities, odds, or results.</p>
+  <form method="post">
+    <textarea name="raw_text" rows="12" placeholder="Q1: Will Norway win the match?"></textarea>
+    <button type="submit">Parse and save snapshot</button>
+  </form>
+</section>
+
+{% if summary %}
+  <section class="band">
+    <h2>Summary</h2>
+    <pre>{{ summary | tojson(indent=2) }}</pre>
+  </section>
+{% endif %}
+
+{% if parsed_csv %}
+  <section class="band">
+    <h2>Parsed CSV</h2>
+    <textarea rows="12" readonly>{{ parsed_csv }}</textarea>
+    {% set rows = parsed_rows %}
+    {% include "partials/table_preview.html" %}
+  </section>
+{% endif %}
+{% endblock %}
+

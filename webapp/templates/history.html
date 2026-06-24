@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>History: {{ session.match_id }}</h1>
+  {% for label, kind in [("Question snapshots", "questions"), ("Prediction snapshots", "predictions"), ("Scoring snapshots", "scoring")] %}
+    <h2>{{ label }}</h2>
+    {% set items = history[kind] %}
+    {% if items %}
+      <table>
+        <thead><tr><th>ID</th><th>Created</th><th>Source</th><th>Download</th></tr></thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td>{{ item.id }}</td>
+              <td>{{ item.created_at }}</td>
+              <td>{{ item.source if item.source is defined else "" }}</td>
+              <td><a href="{{ url_for('download_snapshot', session_id=session.id, kind=kind, snapshot_id=item.id) }}">CSV</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No snapshots.</p>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endblock %}
+
