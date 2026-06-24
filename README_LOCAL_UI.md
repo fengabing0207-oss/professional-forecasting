@@ -60,6 +60,13 @@ The session list shows latest CSV downloads for questions, predictions, and
 scoring after those snapshots exist. Missing snapshot types are shown as muted
 labels instead of links.
 
+## Product Direction
+
+The long-term UI is a card-based live prediction mode. CSV views remain
+available for debugging and audit history, but live use should happen through a
+10-question card workflow. See `docs/PROBABILITY_CUP_PRODUCT_SPEC.md` before
+making Probability Cup UI changes.
+
 ## Live Prediction Workflow
 
 1. Import questions.
