@@ -50,6 +50,9 @@ def test_live_route_get_with_question_snapshot_renders_cards(monkeypatch, tmp_pa
     assert b"Question 1 / 2" in response.data
     assert b"halftime_draw" in response.data
     assert b"market/manual-only" in response.data
+    assert b'id="final_probability_percent_0"' in response.data
+    assert b'id="final_probability_slider_0"' in response.data
+    assert b"syncFinalProbabilityControls" in response.data
 
 
 def test_live_route_post_saves_prediction_snapshot_and_submission_sheet(monkeypatch, tmp_path):
@@ -91,11 +94,12 @@ def test_live_route_post_rejects_ambiguous_decimal_percent(monkeypatch, tmp_path
 
     response = client.post(
         f"/sessions/{session_id}/live",
-        data={"final_probability_percent_0": "0.51", "final_probability_percent_1": ""},
+        data={"final_probability_percent_0": "0.51", "final_probability_percent_1": "60"},
     )
 
     assert response.status_code == 200
     assert b"enter 51" in response.data
+    assert b'value="60"' in response.data
     with connect(str(db_path)) as conn:
         snapshot = latest_prediction_snapshot(conn, session_id)
     assert snapshot is None

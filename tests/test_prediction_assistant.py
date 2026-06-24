@@ -3,6 +3,7 @@ import subprocess
 from webapp.engine_bridge import run_prediction_csv
 from webapp.prediction_assistant import (
     assistant_rows_to_manual_odds_csv,
+    normalize_event_type,
     normalize_final_probability_percent,
     suggest_probability_for_question,
 )
@@ -46,6 +47,34 @@ def test_player_second_half_sot_context_and_high_final_flags():
     )
     assert out["suggested_probability"] > 0.48
     assert "player_2h_sot_above_55" in out["risk_flags"]
+
+
+def test_player_second_half_sot_plural_alias_uses_same_handling():
+    out = suggest_probability_for_question(
+        {
+            "question_id": "q1",
+            "event_type": "player_second_half_shots_on_target",
+            "raw_question": "Will the striker have a second half shot on target?",
+            "player": "Striker",
+            "final_probability_percent": "56",
+        },
+        match_context={"player_context": "primary attacker likely full match"},
+    )
+    assert out["event_type"] == "player_second_half_shots_on_target"
+    assert out["normalized_event_type"] == "player_second_half_shot_on_target"
+    assert out["suggested_probability"] > 0.48
+    assert "high_variance_prop" in out["risk_flags"]
+    assert "player_2h_sot_above_55" in out["risk_flags"]
+
+
+def test_event_type_aliases_and_compound_raw_text_normalize():
+    assert normalize_event_type("player_second_half_sot") == "player_second_half_shot_on_target"
+    assert normalize_event_type("player_shots_on_target") == "player_shot_on_target"
+    assert normalize_event_type("team_shots_on_target_threshold") == "team_shots_on_target_threshold"
+    assert normalize_event_type(
+        "unsupported_market_only",
+        "Will both teams score and will there be 3+ total goals?",
+    ) == "both_teams_score_and_total_goals_over"
 
 
 def test_compound_btts_total_flags_compound_condition():
@@ -99,12 +128,13 @@ def test_final_probability_normalization_and_rejection():
 def test_assistant_does_not_invent_50_or_use_parser_confidence():
     out = suggest_probability_for_question({
         "question_id": "q1",
-        "event_type": "unsupported_market_only",
+        "event_type": "some_unknown_event",
         "raw_question": "Will something odd happen?",
         "parser_confidence": "0.50",
     })
     assert out["suggested_probability"] is None
     assert out["suggested_probability_percent"] == ""
+    assert out["normalized_event_type"] == "some_unknown_event"
 
 
 def test_generated_manual_odds_csv_feeds_prediction_engine():

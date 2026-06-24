@@ -66,6 +66,9 @@
         <h2>{{ row.raw_question }}</h2>
         <div class="live-meta">
           <div><strong>Event</strong><br>{{ row.event_type }}</div>
+          {% if row.normalized_event_type and row.normalized_event_type != row.event_type %}
+            <div><strong>Normalized</strong><br>{{ row.normalized_event_type }}</div>
+          {% endif %}
           <div><strong>Selection</strong><br>{{ row.selection }}</div>
           <div><strong>Threshold</strong><br>{{ row.threshold }}</div>
           <div><strong>Player</strong><br>{{ row.player }}</div>
@@ -84,14 +87,35 @@
           <p class="message error">{{ row.exposure_warnings | join(" ") }}</p>
         {% endif %}
         <div class="final-probability">
+          {% set slider_value = row.final_probability_percent if row.final_probability_percent else row.suggested_probability_percent %}
           <label>Final probability %
-            <input name="final_probability_percent_{{ loop.index0 }}" type="number" min="0" max="100" step="1" inputmode="decimal" value="{{ row.final_probability_percent }}" placeholder="51">
+            <input
+              id="final_probability_percent_{{ loop.index0 }}"
+              class="final-probability-input"
+              name="final_probability_percent_{{ loop.index0 }}"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              inputmode="decimal"
+              value="{{ row.final_probability_percent }}"
+              placeholder="51"
+              data-slider-id="final_probability_slider_{{ loop.index0 }}"
+            >
           </label>
-          {% if row.final_probability_percent or row.suggested_probability_percent != "" %}
-            <input type="range" min="0" max="100" step="1" value="{{ row.final_probability_percent or row.suggested_probability_percent }}" aria-label="visual slider for question {{ loop.index }}">
-          {% else %}
-            <input type="range" min="0" max="100" step="1" value="0" disabled aria-label="no suggested probability for question {{ loop.index }}">
-          {% endif %}
+          <input
+            id="final_probability_slider_{{ loop.index0 }}"
+            class="final-probability-slider"
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value="{{ slider_value if slider_value != '' else 0 }}"
+            data-input-id="final_probability_percent_{{ loop.index0 }}"
+            data-suggested="{{ row.suggested_probability_percent }}"
+            aria-label="probability slider for question {{ loop.index }}"
+            {% if slider_value == "" %}disabled{% endif %}
+          >
         </div>
         <nav class="actions">
           {% if not loop.first %}<a href="#q{{ loop.index - 1 }}">Previous</a>{% endif %}
@@ -131,4 +155,42 @@
     <textarea rows="12" readonly>{{ prediction_csv }}</textarea>
   </section>
 {% endif %}
+<script>
+(function () {
+  function syncFinalProbabilityControls() {
+    document.querySelectorAll(".final-probability-slider").forEach(function (slider) {
+      var input = document.getElementById(slider.dataset.inputId);
+      if (!input) {
+        return;
+      }
+      slider.addEventListener("input", function () {
+        input.value = slider.value;
+      });
+      input.addEventListener("input", function () {
+        var raw = input.value.trim();
+        if (raw === "") {
+          if (slider.dataset.suggested !== "") {
+            slider.disabled = false;
+            slider.value = slider.dataset.suggested;
+          } else {
+            slider.disabled = true;
+            slider.value = "0";
+          }
+          return;
+        }
+        var value = Number(raw);
+        if (Number.isFinite(value) && value >= 0 && value <= 100) {
+          slider.disabled = false;
+          slider.value = String(value);
+        }
+      });
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", syncFinalProbabilityControls);
+  } else {
+    syncFinalProbabilityControls();
+  }
+})();
+</script>
 {% endblock %}

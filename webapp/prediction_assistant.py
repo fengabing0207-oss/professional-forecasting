@@ -11,6 +11,11 @@ from cup.schema import GOAL_EVENT_TYPES, ODDS_COLUMNS
 
 
 EXPOSURE_WARNING = "You may be overexposed to the same match script."
+EVENT_TYPE_ALIASES = {
+    "player_second_half_shots_on_target": "player_second_half_shot_on_target",
+    "player_second_half_sot": "player_second_half_shot_on_target",
+    "player_shots_on_target": "player_shot_on_target",
+}
 
 
 def suggest_probability_for_question(
@@ -23,22 +28,24 @@ def suggest_probability_for_question(
     context = match_context or {}
     raw_question = _text(data.get("raw_question"))
     event_type = _text(data.get("event_type"))
+    normalized_event_type = normalize_event_type(event_type, raw_question)
     selection = _text(data.get("selection"))
     threshold = _optional_float(data.get("threshold"))
     player = _text(data.get("player"))
-    period = _period(raw_question, event_type, selection)
+    period = _period(raw_question, normalized_event_type, selection)
     final_probability_percent = _text(data.get("final_probability_percent"))
 
     out = {
         "question_id": _text(data.get("question_id")),
         "raw_question": raw_question,
         "event_type": event_type,
+        "normalized_event_type": normalized_event_type,
         "selection": selection,
         "threshold": "" if threshold is None else threshold,
         "player": player,
         "period": period,
         "parser_status": _text(data.get("status") or data.get("parser_status")),
-        "model_support_status": _model_support_status(event_type),
+        "model_support_status": _model_support_status(normalized_event_type),
         "suggested_probability": None,
         "suggested_probability_percent": "",
         "suggested_range_low": None,
@@ -51,7 +58,8 @@ def suggest_probability_for_question(
         "final_probability_percent": final_probability_percent,
     }
 
-    suggestion = _base_suggestion(data, context)
+    normalized_data = {**data, "event_type": normalized_event_type}
+    suggestion = _base_suggestion(normalized_data, context)
     if suggestion is not None:
         probability, low, high, confidence, reason, flags = suggestion
         out.update({
@@ -67,7 +75,9 @@ def suggest_probability_for_question(
 
     final_probability = normalize_final_probability_percent(final_probability_percent)
     if final_probability is not None:
-        out["risk_flags"] = _dedupe(out["risk_flags"] + _final_probability_risks(data, context, final_probability))
+        out["risk_flags"] = _dedupe(
+            out["risk_flags"] + _final_probability_risks(normalized_data, context, final_probability)
+        )
     return out
 
 
@@ -129,41 +139,50 @@ def normalize_final_probability_percent(value: Any) -> float | None:
     return percent / 100.0
 
 
+def normalize_event_type(event_type: str, raw_question: str = "") -> str:
+    """Normalize known importer/user aliases without inventing unsupported model coverage."""
+    normalized = EVENT_TYPE_ALIASES.get(_text(event_type), _text(event_type))
+    raw_low = _text(raw_question).lower()
+    if _is_compound_btts_total(normalized, raw_low):
+        return "both_teams_score_and_total_goals_over"
+    return normalized
+
+
 def detect_match_script_exposure(rows: Any) -> list[str]:
     work = _rows_to_dicts(rows)
     favorite_rows = [
         row for row in work
-        if _text(row.get("event_type")) == "team_win"
+        if _normalized_row_event_type(row) == "team_win"
         and _final_probability(row) >= 0.60
         and _text(row.get("selection"))
     ]
     favorite_team = _text(favorite_rows[0].get("selection")) if favorite_rows else ""
-    btts_high = any("both_teams" in _text(row.get("event_type")) and _final_probability(row) >= 0.50 for row in work)
+    btts_high = any("both_teams" in _normalized_row_event_type(row) and _final_probability(row) >= 0.50 for row in work)
     underdog_sot_high = any(
-        _text(row.get("event_type")) in {"team_shots_on_target_threshold", "shots_on_target_threshold"}
+        _normalized_row_event_type(row) in {"team_shots_on_target_threshold", "shots_on_target_threshold"}
         and _is_underdog(_text(row.get("selection")), favorite_team)
         and _final_probability(row) >= 0.50
         for row in work
     )
     underdog_corners_high = any(
-        _text(row.get("event_type")) in {"team_corners_threshold", "corners_threshold"}
+        _normalized_row_event_type(row) in {"team_corners_threshold", "corners_threshold"}
         and _is_underdog(_text(row.get("selection")), favorite_team)
         and _final_probability(row) >= 0.45
         for row in work
     )
     second_half_high = sum(
         1 for row in work
-        if _period(_text(row.get("raw_question")), _text(row.get("event_type")), _text(row.get("selection"))) == "second_half"
+        if _period(_text(row.get("raw_question")), _normalized_row_event_type(row), _text(row.get("selection"))) == "second_half"
         and _final_probability(row) > 0.55
     )
     player_high = sum(
         1 for row in work
-        if _text(row.get("event_type")).startswith("player_") and _final_probability(row) > 0.60
+        if _normalized_row_event_type(row).startswith("player_") and _final_probability(row) > 0.60
     )
     underdog_output_overs = sum(
         1 for row in work
         if _is_underdog(_text(row.get("selection")), favorite_team)
-        and _text(row.get("event_type")) in {"team_shots_on_target_threshold", "team_corners_threshold", "both_teams_score_yes"}
+        and _normalized_row_event_type(row) in {"team_shots_on_target_threshold", "team_corners_threshold", "both_teams_score_yes"}
         and _final_probability(row) >= 0.45
     )
     if favorite_rows and (underdog_sot_high or btts_high or underdog_corners_high):
@@ -329,6 +348,7 @@ def _final_probability_risks(data: dict[str, Any], context: dict[str, Any], prob
 
 
 def _model_support_status(event_type: str) -> str:
+    event_type = normalize_event_type(event_type)
     if event_type in GOAL_EVENT_TYPES:
         return "goal-model supported"
     if event_type == "unsupported_market_only":
@@ -391,6 +411,13 @@ def _rows_to_dicts(rows: Any) -> list[dict[str, Any]]:
     if isinstance(rows, pd.DataFrame):
         return rows.to_dict(orient="records")
     return [_row_to_dict(row) for row in rows]
+
+
+def _normalized_row_event_type(row: dict[str, Any]) -> str:
+    return normalize_event_type(
+        _text(row.get("normalized_event_type") or row.get("event_type")),
+        _text(row.get("raw_question")),
+    )
 
 
 def _text(value: Any) -> str:

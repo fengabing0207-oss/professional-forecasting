@@ -283,9 +283,16 @@ def create_app() -> Flask:
                     log_run(conn, "info", "generated live-mode predictions", session_id)
                 submission_sheet = _submission_sheet(assistant_rows)
                 flash("Live predictions saved as a new prediction snapshot.", "success")
+                if any(not row.get("final_probability_percent") for row in assistant_rows):
+                    flash("Some final probabilities were blank; only entered probabilities were included.", "error")
             except Exception as exc:
                 flash(str(exc), "error")
-                assistant_rows = _live_assistant_rows(question_csv, match_context, {})
+                assistant_rows = _live_assistant_rows(
+                    question_csv,
+                    match_context,
+                    request.form,
+                    validate_final=False,
+                )
         else:
             assistant_rows = _live_assistant_rows(question_csv, match_context, {})
         total_questions = len(assistant_rows)
@@ -479,13 +486,24 @@ def _live_match_context(form: Any) -> dict[str, str]:
     }
 
 
-def _live_assistant_rows(question_csv: str, match_context: dict[str, str], form: Any) -> list[dict[str, Any]]:
+def _live_assistant_rows(
+    question_csv: str,
+    match_context: dict[str, str],
+    form: Any,
+    validate_final: bool = True,
+) -> list[dict[str, Any]]:
     question_rows = _preview_csv(question_csv, limit=10)
     rows = []
     for index, row in enumerate(question_rows):
-        row["final_probability_percent"] = form.get(f"final_probability_percent_{index}", "") if form else ""
-        rows.append(prediction_assistant.suggest_probability_for_question(row, match_context))
-    exposure_warnings = prediction_assistant.detect_match_script_exposure(rows)
+        final_value = form.get(f"final_probability_percent_{index}", "") if form else ""
+        row["final_probability_percent"] = final_value if validate_final else ""
+        suggested = prediction_assistant.suggest_probability_for_question(row, match_context)
+        if not validate_final:
+            suggested["final_probability_percent"] = final_value
+        rows.append(suggested)
+    exposure_warnings = []
+    if validate_final:
+        exposure_warnings = prediction_assistant.detect_match_script_exposure(rows)
     if exposure_warnings:
         for row in rows:
             row["exposure_warnings"] = exposure_warnings
