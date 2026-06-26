@@ -5,6 +5,7 @@ from webapp.history import (
     latest_assistant_snapshot,
     latest_context_snapshot,
     latest_prediction_snapshot,
+    save_assistant_snapshot,
     save_context_snapshot,
     save_question_snapshot,
 )
@@ -147,6 +148,70 @@ def test_scoring_and_calibration_surface_saved_live_snapshots(monkeypatch, tmp_p
     assert calibration_response.status_code == 200
     assert b"Saved live sessions are available" in calibration_response.data
     assert b"M1" in calibration_response.data
+
+
+def test_latest_context_snapshot_viewer_route(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_context_snapshot(conn, session_id, '{"favorite_team": "England"}', source="test")
+
+    response = client.get(f"/sessions/{session_id}/snapshots/context/latest")
+
+    assert response.status_code == 200
+    assert b"Latest context snapshot" in response.data
+    assert b"favorite_team" in response.data
+
+
+def test_latest_assistant_snapshot_viewer_route(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_assistant_snapshot(conn, session_id, '[{"question_id": "q1"}]', source="test")
+
+    response = client.get(f"/sessions/{session_id}/snapshots/assistant/latest")
+
+    assert response.status_code == 200
+    assert b"Latest assistant snapshot" in response.data
+    assert b"question_id" in response.data
+
+
+def test_context_snapshot_viewer_route_by_id(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        snapshot_id = save_context_snapshot(conn, session_id, '{"favorite_team": "England"}', source="test")
+
+    response = client.get(f"/sessions/{session_id}/snapshots/context/{snapshot_id}")
+
+    assert response.status_code == 200
+    assert b"Context snapshot" in response.data
+    assert b"favorite_team" in response.data
+
+
+def test_invalid_snapshot_kind_returns_404(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+
+    response = client.get(f"/sessions/{session_id}/snapshots/badkind/latest")
+
+    assert response.status_code == 404
+
+
+def test_missing_snapshot_id_returns_404(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+
+    response = client.get(f"/sessions/{session_id}/snapshots/context/999")
+
+    assert response.status_code == 404
 
 
 def test_live_route_post_rejects_ambiguous_decimal_percent(monkeypatch, tmp_path):
