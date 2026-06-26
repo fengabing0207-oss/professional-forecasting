@@ -27,6 +27,9 @@
       {% if latest_context %}
         <p class="muted">Prefilled from latest saved context snapshot: {{ latest_context.created_at }}</p>
       {% endif %}
+      {% if latest_market %}
+        <p class="muted">Prefilled from latest saved market snapshot: {{ latest_market.created_at }}</p>
+      {% endif %}
       <div class="grid-form">
         <label>Favorite team <input name="favorite_team" value="{{ match_context.favorite_team }}" placeholder="optional"></label>
         <label>Expected match script <input name="expected_match_script" value="{{ match_context.expected_match_script }}" placeholder="wide, open late, strong favorite"></label>
@@ -59,7 +62,7 @@
         <span class="muted">{{ missing_count }} missing</span>
       </div>
       <div class="actions">
-        <button type="button" id="apply_suggestions_to_blank">Apply assistant suggestions to all blank finals</button>
+        <button type="button" id="apply_recommendations_to_blank">Apply recommendations to all blank finals</button>
         <button type="button" id="clear_all_finals">Clear all finals</button>
       </div>
     </section>
@@ -84,17 +87,31 @@
           <div><strong>Support</strong><br>{{ row.model_support_status }}</div>
         </div>
         <div class="assistant-panel">
-          <div><strong>Suggested</strong><br>{{ row.suggested_probability_percent if row.suggested_probability_percent != "" else "Needs review" }}{% if row.suggested_probability_percent != "" %}%{% endif %}</div>
-          <div><strong>Range</strong><br>{{ row.suggested_range }}</div>
+          <div><strong>Heuristic</strong><br>{{ row.suggested_probability_percent if row.suggested_probability_percent != "" else "Needs review" }}{% if row.suggested_probability_percent != "" %}%{% endif %}</div>
+          <div><strong>Market Anchor</strong><br>{{ row.market_anchor_probability_percent if row.market_anchor_probability_percent != "" else "Blank" }}{% if row.market_anchor_probability_percent != "" %}%{% endif %}</div>
+          <div><strong>Recommended</strong><br>{{ row.recommendation_probability_percent if row.recommendation_probability_percent != "" else "Needs review" }}{% if row.recommendation_probability_percent != "" %}%{% endif %}</div>
+          <div><strong>Range</strong><br>{{ row.anchored_range if row.anchored_range else row.suggested_range }}</div>
           <div><strong>Confidence</strong><br>{{ row.confidence }}</div>
           <div class="span-2"><strong>Reasoning</strong><br>{{ row.reasoning }}</div>
           <div><strong>Risk Flags</strong><br>{{ row.risk_flags | join(", ") }}</div>
+        </div>
+        <div class="assistant-panel">
+          <label>Market anchor %
+            <input name="market_anchor_percent_{{ loop.index0 }}" type="number" min="0" max="100" step="1" inputmode="decimal" value="{{ row.market_anchor_percent }}" placeholder="47" autocomplete="off">
+          </label>
+          <label>Market odds
+            <input name="market_odds_{{ loop.index0 }}" value="{{ row.market_odds }}" placeholder="-160 or 1.62" autocomplete="off">
+          </label>
+          <label class="span-2">Market source / notes
+            <input name="market_source_{{ loop.index0 }}" value="{{ row.market_source }}" placeholder="manual market check" autocomplete="off">
+          </label>
         </div>
         {% if row.exposure_warnings %}
           <p class="message error">{{ row.exposure_warnings | join(" ") }}</p>
         {% endif %}
         <div class="final-probability">
-          {% set slider_value = row.final_probability_percent if row.final_probability_percent else row.suggested_probability_percent %}
+          {% set guidance_value = row.recommendation_probability_percent if row.recommendation_probability_percent != "" else row.suggested_probability_percent %}
+          {% set slider_value = row.final_probability_percent if row.final_probability_percent else guidance_value %}
           <label>Final probability %
             <input
               id="final_probability_percent_{{ loop.index0 }}"
@@ -122,7 +139,9 @@
             step="1"
             value="{{ slider_value if slider_value != '' else 0 }}"
             data-input-id="final_probability_percent_{{ loop.index0 }}"
-            data-suggested="{{ row.suggested_probability_percent }}"
+            data-recommendation="{{ row.recommendation_probability_percent }}"
+            data-heuristic="{{ row.suggested_probability_percent }}"
+            data-suggested="{{ guidance_value }}"
             data-server-final="{{ row.final_probability_percent }}"
             aria-label="probability slider for question {{ loop.index }}"
             {% if slider_value == "" %}disabled{% endif %}
@@ -130,12 +149,20 @@
           <div class="actions">
             <button
               type="button"
-              class="use-suggested-final"
+              class="use-recommended-final"
               data-input-id="final_probability_percent_{{ loop.index0 }}"
               data-slider-id="final_probability_slider_{{ loop.index0 }}"
-              data-suggested="{{ row.suggested_probability_percent }}"
+              data-recommendation="{{ row.recommendation_probability_percent }}"
+              {% if row.recommendation_probability_percent == "" %}disabled{% endif %}
+            >Use recommended</button>
+            <button
+              type="button"
+              class="use-heuristic-final"
+              data-input-id="final_probability_percent_{{ loop.index0 }}"
+              data-slider-id="final_probability_slider_{{ loop.index0 }}"
+              data-heuristic="{{ row.suggested_probability_percent }}"
               {% if row.suggested_probability_percent == "" %}disabled{% endif %}
-            >Use suggested</button>
+            >Use heuristic</button>
             <button
               type="button"
               class="clear-final"
@@ -165,6 +192,7 @@
     <div class="status-grid">
       <div><strong>Context snapshot</strong><br>#{{ audit_summary.context_snapshot_id }}</div>
       <div><strong>Assistant snapshot</strong><br>#{{ audit_summary.assistant_snapshot_id }}</div>
+      <div><strong>Market snapshot</strong><br>#{{ audit_summary.market_snapshot_id }}</div>
       <div><strong>Prediction snapshot</strong><br>{{ "saved" if audit_summary.prediction_snapshot_saved else "missing" }}</div>
       <div><strong>Final probabilities</strong><br>{{ audit_summary.final_probabilities_entered }} entered</div>
       <div><strong>Blank probabilities</strong><br>{{ audit_summary.blank_final_probabilities }}</div>
@@ -210,13 +238,13 @@
     }
   }
 
-  function applySuggested(input, slider, suggested) {
-    if (suggested === "") {
+  function applyGuidance(input, slider, value) {
+    if (value === "") {
       return;
     }
-    input.value = suggested;
+    input.value = value;
     slider.disabled = false;
-    slider.value = suggested;
+    slider.value = value;
   }
 
   function syncFinalProbabilityControls() {
@@ -249,14 +277,24 @@
         }
       });
     });
-    document.querySelectorAll(".use-suggested-final").forEach(function (button) {
+    document.querySelectorAll(".use-recommended-final").forEach(function (button) {
       button.addEventListener("click", function () {
         var input = document.getElementById(button.dataset.inputId);
         var slider = document.getElementById(button.dataset.sliderId);
         if (!input || !slider) {
           return;
         }
-        applySuggested(input, slider, button.dataset.suggested || "");
+        applyGuidance(input, slider, button.dataset.recommendation || "");
+      });
+    });
+    document.querySelectorAll(".use-heuristic-final").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var input = document.getElementById(button.dataset.inputId);
+        var slider = document.getElementById(button.dataset.sliderId);
+        if (!input || !slider) {
+          return;
+        }
+        applyGuidance(input, slider, button.dataset.heuristic || "");
       });
     });
     document.querySelectorAll(".clear-final").forEach(function (button) {
@@ -269,7 +307,7 @@
         clearFinal(input, slider);
       });
     });
-    var applyAll = document.getElementById("apply_suggestions_to_blank");
+    var applyAll = document.getElementById("apply_recommendations_to_blank");
     if (applyAll) {
       applyAll.addEventListener("click", function () {
         document.querySelectorAll(".final-probability-input").forEach(function (input) {
@@ -280,7 +318,7 @@
           if (!slider) {
             return;
           }
-          applySuggested(input, slider, slider.dataset.suggested || "");
+          applyGuidance(input, slider, slider.dataset.recommendation || slider.dataset.heuristic || "");
         });
       });
     }

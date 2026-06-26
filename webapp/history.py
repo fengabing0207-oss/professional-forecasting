@@ -59,7 +59,9 @@ def list_sessions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                (SELECT MAX(created_at) FROM context_snapshots c WHERE c.session_id = s.id)
                    AS latest_context_at,
                (SELECT MAX(created_at) FROM assistant_snapshots a WHERE a.session_id = s.id)
-                   AS latest_assistant_at
+                   AS latest_assistant_at,
+               (SELECT MAX(created_at) FROM market_snapshots m WHERE m.session_id = s.id)
+                   AS latest_market_at
         FROM sessions s
         ORDER BY s.updated_at DESC, s.id DESC
         """,
@@ -90,6 +92,11 @@ def save_context_snapshot(conn: sqlite3.Connection, session_id: int,
 def save_assistant_snapshot(conn: sqlite3.Connection, session_id: int,
                             assistant_json: str, source: str = "live_prediction") -> int:
     return _save_json_snapshot(conn, "assistant_snapshots", session_id, assistant_json, source)
+
+
+def save_market_snapshot(conn: sqlite3.Connection, session_id: int,
+                         market_json: str, source: str = "live_prediction") -> int:
+    return _save_json_snapshot(conn, "market_snapshots", session_id, market_json, source)
 
 
 def _save_snapshot(conn: sqlite3.Connection, table: str, session_id: int,
@@ -126,6 +133,8 @@ def _save_json_snapshot(conn: sqlite3.Connection, table: str, session_id: int,
         column = "context_json"
     elif table == "assistant_snapshots":
         column = "assistant_json"
+    elif table == "market_snapshots":
+        column = "market_json"
     else:
         raise ValueError(f"unsupported snapshot table: {table}")
     cur = conn.execute(
@@ -155,6 +164,10 @@ def latest_context_snapshot(conn: sqlite3.Connection, session_id: int) -> sqlite
 
 def latest_assistant_snapshot(conn: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
     return _latest(conn, "assistant_snapshots", session_id)
+
+
+def latest_market_snapshot(conn: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
+    return _latest(conn, "market_snapshots", session_id)
 
 
 def _latest(conn: sqlite3.Connection, table: str, session_id: int) -> sqlite3.Row | None:
@@ -190,6 +203,11 @@ def snapshot_history(conn: sqlite3.Connection, session_id: int) -> dict[str, lis
         "assistant": [dict(row) for row in query_all(
             conn,
             "SELECT * FROM assistant_snapshots WHERE session_id = ? ORDER BY created_at DESC, id DESC",
+            (session_id,),
+        )],
+        "market": [dict(row) for row in query_all(
+            conn,
+            "SELECT * FROM market_snapshots WHERE session_id = ? ORDER BY created_at DESC, id DESC",
             (session_id,),
         )],
     }

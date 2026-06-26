@@ -84,6 +84,15 @@ def init_db(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS market_snapshots (
+            id INTEGER PRIMARY KEY,
+            session_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            market_json TEXT NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS run_logs (
             id INTEGER PRIMARY KEY,
             session_id INTEGER,

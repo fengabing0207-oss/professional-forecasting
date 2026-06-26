@@ -25,7 +25,7 @@
     {% endif %}
   {% endfor %}
 
-  {% for label, kind in [("Context snapshots", "context"), ("Assistant snapshots", "assistant")] %}
+  {% for label, kind in [("Context snapshots", "context"), ("Assistant snapshots", "assistant"), ("Market snapshots", "market")] %}
     <h2>{{ label }}</h2>
     {% set items = history[kind] %}
     {% if items %}
