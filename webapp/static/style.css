@@ -103,6 +103,42 @@ button,
   gap: 12px;
 }
 
+.live-card {
+  scroll-margin-top: 12px;
+}
+
+.live-card-top,
+.question-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.live-meta,
+.assistant-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.assistant-panel {
+  padding: 12px;
+  background: #f7fafc;
+  border: 1px solid #e1e6ee;
+  border-radius: 6px;
+}
+
+.final-probability {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) 1fr;
+  gap: 14px;
+  align-items: end;
+  margin-top: 14px;
+}
+
 .download-links {
   display: flex;
   flex-wrap: wrap;
@@ -167,7 +203,10 @@ pre {
 @media (max-width: 760px) {
   .grid-form,
   .inline-inputs,
-  .status-grid {
+  .status-grid,
+  .live-meta,
+  .assistant-panel,
+  .final-probability {
     grid-template-columns: 1fr;
   }
 

@@ -71,16 +71,26 @@ making Probability Cup UI changes.
 
 1. Import questions.
 2. Review question parsing.
-3. Use Manual Probability Workbench to enter your own probabilities.
-4. Generate manual odds CSV automatically.
-5. Run predictions.
-6. Manually submit final probabilities to SportsPredict.
+3. Open Live Prediction Mode from the session page.
+4. Review assistant ranges, reasoning, risk flags, and exposure warnings.
+5. Enter final probabilities as percents.
+6. Generate predictions and inspect the manual submission sheet.
+7. Manually submit final probabilities to SportsPredict.
 
 The Manual Probability Workbench uses percent mode. Enter `51` for 51%, which
 is written to the generated manual odds CSV as `0.51`. Blank inputs stay blank.
 Ambiguous decimal percent entries such as `0.51` are rejected; enter `51`
 instead. The workbench does not invent probabilities and does not use
 `parser_confidence` as a probability.
+
+Live Prediction Mode is available at:
+
+```text
+/sessions/<session_id>/live
+```
+
+The assistant is deterministic and heuristic. It does not scrape, call external
+APIs, train a model, or submit anything automatically.
 
 ## Settled History Calibration
 
