@@ -17,6 +17,8 @@ def test_database_initializes_all_required_tables():
             "question_snapshots",
             "prediction_snapshots",
             "scoring_snapshots",
+            "context_snapshots",
+            "assistant_snapshots",
             "run_logs",
         }.issubset(names)
 
@@ -34,4 +36,3 @@ def test_create_session_works():
         row = get_session(conn, session_id)
         assert row["match_id"] == "NOR_SEN"
         assert row["home_team"] == "Norway"
-

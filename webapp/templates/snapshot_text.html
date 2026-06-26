@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<section class="band">
+  <h1>{{ title }}</h1>
+  <p>{{ session.home_team }} vs {{ session.away_team }} · {{ session.match_id }}</p>
+  <p class="muted">Snapshot #{{ snapshot.id }} · {{ snapshot.created_at }} · {{ snapshot.source }}</p>
+  <nav class="actions">
+    <a href="{{ url_for('session_detail', session_id=session.id) }}">Session</a>
+    <a href="{{ url_for('history', session_id=session.id) }}">History</a>
+    <a href="{{ url_for('live_prediction', session_id=session.id) }}">Live Prediction Mode</a>
+  </nav>
+</section>
+
+<section class="band">
+  <h2>Snapshot Text</h2>
+  <textarea rows="18" readonly>{{ text }}</textarea>
+</section>
+{% endblock %}

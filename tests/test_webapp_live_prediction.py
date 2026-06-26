@@ -2,7 +2,10 @@ from webapp.app import create_app
 from webapp.db import connect, init_db
 from webapp.history import (
     create_session,
+    latest_assistant_snapshot,
+    latest_context_snapshot,
     latest_prediction_snapshot,
+    save_context_snapshot,
     save_question_snapshot,
 )
 
@@ -55,7 +58,29 @@ def test_live_route_get_with_question_snapshot_renders_cards(monkeypatch, tmp_pa
     assert b"syncFinalProbabilityControls" in response.data
 
 
-def test_live_route_post_saves_prediction_snapshot_and_submission_sheet(monkeypatch, tmp_path):
+def test_live_route_get_prefills_latest_context_snapshot(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_question_snapshot(conn, session_id, _question_csv(), source="test")
+        save_context_snapshot(
+            conn,
+            session_id,
+            '{"favorite_team": "England", "expected_match_script": "open late", "tournament_context": "must-win", "player_context": "rotation risk", "user_notes": "watch cards"}',
+            source="test",
+        )
+
+    response = client.get(f"/sessions/{session_id}/live")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert 'value="England"' in body
+    assert 'value="open late"' in body
+    assert "Prefilled from latest saved context snapshot" in body
+
+
+def test_live_route_post_saves_context_assistant_prediction_and_submission_sheet(monkeypatch, tmp_path):
     client, db_path = _client_with_db(monkeypatch, tmp_path)
     with connect(str(db_path)) as conn:
         init_db(conn)
@@ -77,12 +102,51 @@ def test_live_route_post_saves_prediction_snapshot_and_submission_sheet(monkeypa
 
     assert response.status_code == 200
     assert b"Manual Submission Sheet" in response.data
-    assert b"51" in response.data
+    assert b"Audit Summary" in response.data
+    assert b"Q1 51% - At halftime will the match be tied?" in response.data
+    assert b"Q2 60% - Will Ghana commit more fouls than England?" in response.data
     with connect(str(db_path)) as conn:
-        snapshot = latest_prediction_snapshot(conn, session_id)
-    assert snapshot is not None
-    assert "0.51" in snapshot["csv_text"]
-    assert "missing_probability" not in snapshot["csv_text"]
+        prediction = latest_prediction_snapshot(conn, session_id)
+        context = latest_context_snapshot(conn, session_id)
+        assistant = latest_assistant_snapshot(conn, session_id)
+    assert prediction is not None
+    assert context is not None
+    assert assistant is not None
+    assert '"favorite_team": "England"' in context["context_json"]
+    assert '"final_probability_percent": "60"' in assistant["assistant_json"]
+    assert "0.51" in prediction["csv_text"]
+    assert "missing_probability" not in prediction["csv_text"]
+
+
+def test_scoring_and_calibration_surface_saved_live_snapshots(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_question_snapshot(conn, session_id, _question_csv(), source="test")
+
+    client.post(
+        f"/sessions/{session_id}/live",
+        data={
+            "favorite_team": "England",
+            "expected_match_script": "",
+            "tournament_context": "",
+            "player_context": "",
+            "user_notes": "",
+            "final_probability_percent_0": "51",
+            "final_probability_percent_1": "",
+        },
+    )
+
+    scoring_response = client.get(f"/sessions/{session_id}/scoring")
+    assert scoring_response.status_code == 200
+    assert b"Latest Saved Final Probabilities" in scoring_response.data
+    assert b"assistant suggestions/finals" in scoring_response.data
+
+    calibration_response = client.get("/calibration")
+    assert calibration_response.status_code == 200
+    assert b"Saved live sessions are available" in calibration_response.data
+    assert b"M1" in calibration_response.data
 
 
 def test_live_route_post_rejects_ambiguous_decimal_percent(monkeypatch, tmp_path):
@@ -101,5 +165,9 @@ def test_live_route_post_rejects_ambiguous_decimal_percent(monkeypatch, tmp_path
     assert b"enter 51" in response.data
     assert b'value="60"' in response.data
     with connect(str(db_path)) as conn:
-        snapshot = latest_prediction_snapshot(conn, session_id)
-    assert snapshot is None
+        prediction = latest_prediction_snapshot(conn, session_id)
+        context = latest_context_snapshot(conn, session_id)
+        assistant = latest_assistant_snapshot(conn, session_id)
+    assert prediction is None
+    assert context is None
+    assert assistant is None

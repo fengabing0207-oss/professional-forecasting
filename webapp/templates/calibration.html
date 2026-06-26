@@ -4,6 +4,14 @@
 <section class="band">
   <h1>Settled History Calibration</h1>
   <p class="muted">Paste or upload manually copied settled results. Analysis runs locally and is not saved.</p>
+  {% if live_snapshot_sessions %}
+    <p class="muted">Saved live sessions are available for matching settled rows back to final probabilities and assistant context.</p>
+    <div class="actions">
+      {% for session in live_snapshot_sessions[:5] %}
+        <a href="{{ url_for('session_detail', session_id=session.id) }}">{{ session.match_id }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
   <form method="post" enctype="multipart/form-data">
     <label for="csv_text">Settled history CSV</label>
     <textarea id="csv_text" name="csv_text" rows="12" placeholder="session_id,match_id,match_date,home_team,away_team,question_id,raw_question,event_type,selection,user_prob,crowd_prob,actual_result,platform_rbp,notes">{{ csv_text }}</textarea>

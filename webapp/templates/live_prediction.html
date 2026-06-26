@@ -24,6 +24,9 @@
   <form method="post">
     <section class="band">
       <h2>Match Context</h2>
+      {% if latest_context %}
+        <p class="muted">Prefilled from latest saved context snapshot: {{ latest_context.created_at }}</p>
+      {% endif %}
       <div class="grid-form">
         <label>Favorite team <input name="favorite_team" value="{{ match_context.favorite_team }}" placeholder="optional"></label>
         <label>Expected match script <input name="expected_match_script" value="{{ match_context.expected_match_script }}" placeholder="wide, open late, strong favorite"></label>
@@ -126,21 +129,36 @@
 
     <section class="band">
       <h2>Finalize</h2>
-      <p class="muted">Blank final probabilities stay blank. This creates a local prediction snapshot only; submission remains manual.</p>
+      <p class="muted">Blank final probabilities stay blank. This saves context, assistant, and prediction snapshots locally; submission remains manual.</p>
       <button type="submit">Save Final Probabilities and Generate Predictions</button>
     </section>
   </form>
 {% endif %}
 
+{% if audit_summary %}
+  <section class="band">
+    <h2>Audit Summary</h2>
+    <div class="status-grid">
+      <div><strong>Context snapshot</strong><br>#{{ audit_summary.context_snapshot_id }}</div>
+      <div><strong>Assistant snapshot</strong><br>#{{ audit_summary.assistant_snapshot_id }}</div>
+      <div><strong>Prediction snapshot</strong><br>{{ "saved" if audit_summary.prediction_snapshot_saved else "missing" }}</div>
+      <div><strong>Final probabilities</strong><br>{{ audit_summary.final_probabilities_entered }} entered</div>
+      <div><strong>Blank probabilities</strong><br>{{ audit_summary.blank_final_probabilities }}</div>
+    </div>
+  </section>
+{% endif %}
+
 {% if submission_sheet %}
   <section class="band">
     <h2>Manual Submission Sheet</h2>
+    <label>Copy-friendly block</label>
+    <textarea rows="8" readonly>{{ submission_sheet_text }}</textarea>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Question</th><th>Raw question</th><th>Final probability %</th></tr></thead>
+        <thead><tr><th>#</th><th>Question ID</th><th>Raw question</th><th>Final probability %</th></tr></thead>
         <tbody>
           {% for row in submission_sheet %}
-            <tr><td>{{ row.question_id }}</td><td>{{ row.raw_question }}</td><td>{{ row.final_probability_percent }}</td></tr>
+            <tr><td>{{ row.q_number }}</td><td>{{ row.question_id }}</td><td>{{ row.raw_question }}</td><td>{{ row.final_probability_percent }}</td></tr>
           {% endfor %}
         </tbody>
       </table>

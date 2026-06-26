@@ -4,6 +4,13 @@
 <section class="band">
   <h1>Scoring</h1>
   <p class="muted">Brier is meaningful only with real resolved results. RBP requires real crowd_brier. Dummy samples are integration tests, not predictive validation.</p>
+  {% if context_snapshot or assistant_snapshot %}
+    <p class="muted">
+      Saved live workflow audit is available:
+      {% if context_snapshot %}<a href="{{ url_for('view_latest_json_snapshot', session_id=session.id, kind='context') }}">context</a>{% endif %}
+      {% if assistant_snapshot %}<a href="{{ url_for('view_latest_json_snapshot', session_id=session.id, kind='assistant') }}">assistant suggestions/finals</a>{% endif %}
+    </p>
+  {% endif %}
   <form method="post" enctype="multipart/form-data">
     <label>Predictions CSV</label>
     <textarea name="predictions_csv" rows="10">{{ predictions_csv }}</textarea>
@@ -13,6 +20,22 @@
     <button type="submit">Score predictions</button>
   </form>
 </section>
+
+{% if final_probability_rows %}
+  <section class="band">
+    <h2>Latest Saved Final Probabilities</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Question ID</th><th>Raw question</th><th>Final probability %</th></tr></thead>
+        <tbody>
+          {% for row in final_probability_rows %}
+            <tr><td>{{ row.q_number }}</td><td>{{ row.question_id }}</td><td>{{ row.raw_question }}</td><td>{{ row.final_probability_percent }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
 
 {% if scoring_csv %}
   <section class="band">
@@ -25,4 +48,3 @@
   </section>
 {% endif %}
 {% endblock %}
-

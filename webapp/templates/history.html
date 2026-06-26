@@ -24,6 +24,27 @@
       <p class="muted">No snapshots.</p>
     {% endif %}
   {% endfor %}
+
+  {% for label, kind in [("Context snapshots", "context"), ("Assistant snapshots", "assistant")] %}
+    <h2>{{ label }}</h2>
+    {% set items = history[kind] %}
+    {% if items %}
+      <table>
+        <thead><tr><th>ID</th><th>Created</th><th>Source</th><th>View</th></tr></thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td>{{ item.id }}</td>
+              <td>{{ item.created_at }}</td>
+              <td>{{ item.source }}</td>
+              <td><a href="{{ url_for('view_json_snapshot', session_id=session.id, kind=kind, snapshot_id=item.id) }}">JSON</a></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="muted">No snapshots.</p>
+    {% endif %}
+  {% endfor %}
 </section>
 {% endblock %}
-
