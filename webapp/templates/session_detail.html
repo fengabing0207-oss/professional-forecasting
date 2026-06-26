@@ -17,6 +17,22 @@
 
 <section class="band status-grid">
   <div><strong>Questions</strong><br>{{ "imported" if question else "missing" }}</div>
+  <div>
+    <strong>Context</strong><br>
+    {% if context_snapshot %}
+      saved · <a href="{{ url_for('view_latest_json_snapshot', session_id=session.id, kind='context') }}">view</a>
+    {% else %}
+      missing
+    {% endif %}
+  </div>
+  <div>
+    <strong>Assistant</strong><br>
+    {% if assistant_snapshot %}
+      saved · <a href="{{ url_for('view_latest_json_snapshot', session_id=session.id, kind='assistant') }}">view</a>
+    {% else %}
+      missing
+    {% endif %}
+  </div>
   <div><strong>Predictions</strong><br>{{ "generated" if prediction else "missing" }}</div>
   <div><strong>Scoring</strong><br>{{ "generated" if scoring else "missing" }}</div>
 </section>

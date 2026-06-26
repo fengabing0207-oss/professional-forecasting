@@ -66,6 +66,24 @@ def init_db(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS context_snapshots (
+            id INTEGER PRIMARY KEY,
+            session_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            context_json TEXT NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS assistant_snapshots (
+            id INTEGER PRIMARY KEY,
+            session_id INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            assistant_json TEXT NOT NULL,
+            FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS run_logs (
             id INTEGER PRIMARY KEY,
             session_id INTEGER,
@@ -87,4 +105,3 @@ def query_all(conn: sqlite3.Connection, sql: str,
 def query_one(conn: sqlite3.Connection, sql: str,
               params: Iterable[Any] = ()) -> sqlite3.Row | None:
     return conn.execute(sql, tuple(params)).fetchone()
-

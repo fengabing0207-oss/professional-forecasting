@@ -21,9 +21,12 @@
     </div>
   </section>
 {% else %}
-  <form method="post">
+  <form method="post" autocomplete="off">
     <section class="band">
       <h2>Match Context</h2>
+      {% if latest_context %}
+        <p class="muted">Prefilled from latest saved context snapshot: {{ latest_context.created_at }}</p>
+      {% endif %}
       <div class="grid-form">
         <label>Favorite team <input name="favorite_team" value="{{ match_context.favorite_team }}" placeholder="optional"></label>
         <label>Expected match script <input name="expected_match_script" value="{{ match_context.expected_match_script }}" placeholder="wide, open late, strong favorite"></label>
@@ -54,6 +57,10 @@
           <a href="#q{{ loop.index }}">Q{{ loop.index }}</a>
         {% endfor %}
         <span class="muted">{{ missing_count }} missing</span>
+      </div>
+      <div class="actions">
+        <button type="button" id="apply_suggestions_to_blank">Apply assistant suggestions to all blank finals</button>
+        <button type="button" id="clear_all_finals">Clear all finals</button>
       </div>
     </section>
 
@@ -101,6 +108,9 @@
               value="{{ row.final_probability_percent }}"
               placeholder="51"
               data-slider-id="final_probability_slider_{{ loop.index0 }}"
+              data-server-final="{{ row.final_probability_percent }}"
+              data-final-state="{{ 'set' if row.final_probability_percent else 'blank' }}"
+              autocomplete="off"
             >
           </label>
           <input
@@ -113,9 +123,26 @@
             value="{{ slider_value if slider_value != '' else 0 }}"
             data-input-id="final_probability_percent_{{ loop.index0 }}"
             data-suggested="{{ row.suggested_probability_percent }}"
+            data-server-final="{{ row.final_probability_percent }}"
             aria-label="probability slider for question {{ loop.index }}"
             {% if slider_value == "" %}disabled{% endif %}
           >
+          <div class="actions">
+            <button
+              type="button"
+              class="use-suggested-final"
+              data-input-id="final_probability_percent_{{ loop.index0 }}"
+              data-slider-id="final_probability_slider_{{ loop.index0 }}"
+              data-suggested="{{ row.suggested_probability_percent }}"
+              {% if row.suggested_probability_percent == "" %}disabled{% endif %}
+            >Use suggested</button>
+            <button
+              type="button"
+              class="clear-final"
+              data-input-id="final_probability_percent_{{ loop.index0 }}"
+              data-slider-id="final_probability_slider_{{ loop.index0 }}"
+            >Clear final</button>
+          </div>
         </div>
         <nav class="actions">
           {% if not loop.first %}<a href="#q{{ loop.index - 1 }}">Previous</a>{% endif %}
@@ -126,21 +153,36 @@
 
     <section class="band">
       <h2>Finalize</h2>
-      <p class="muted">Blank final probabilities stay blank. This creates a local prediction snapshot only; submission remains manual.</p>
+      <p class="muted">Blank final probabilities stay blank. This saves context, assistant, and prediction snapshots locally; submission remains manual.</p>
       <button type="submit">Save Final Probabilities and Generate Predictions</button>
     </section>
   </form>
 {% endif %}
 
+{% if audit_summary %}
+  <section class="band">
+    <h2>Audit Summary</h2>
+    <div class="status-grid">
+      <div><strong>Context snapshot</strong><br>#{{ audit_summary.context_snapshot_id }}</div>
+      <div><strong>Assistant snapshot</strong><br>#{{ audit_summary.assistant_snapshot_id }}</div>
+      <div><strong>Prediction snapshot</strong><br>{{ "saved" if audit_summary.prediction_snapshot_saved else "missing" }}</div>
+      <div><strong>Final probabilities</strong><br>{{ audit_summary.final_probabilities_entered }} entered</div>
+      <div><strong>Blank probabilities</strong><br>{{ audit_summary.blank_final_probabilities }}</div>
+    </div>
+  </section>
+{% endif %}
+
 {% if submission_sheet %}
   <section class="band">
     <h2>Manual Submission Sheet</h2>
+    <label>Copy-friendly block</label>
+    <textarea rows="8" readonly>{{ submission_sheet_text }}</textarea>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Question</th><th>Raw question</th><th>Final probability %</th></tr></thead>
+        <thead><tr><th>#</th><th>Question ID</th><th>Raw question</th><th>Final probability %</th></tr></thead>
         <tbody>
           {% for row in submission_sheet %}
-            <tr><td>{{ row.question_id }}</td><td>{{ row.raw_question }}</td><td>{{ row.final_probability_percent }}</td></tr>
+            <tr><td>{{ row.q_number }}</td><td>{{ row.question_id }}</td><td>{{ row.raw_question }}</td><td>{{ row.final_probability_percent }}</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -157,11 +199,39 @@
 {% endif %}
 <script>
 (function () {
+  function clearFinal(input, slider) {
+    input.value = "";
+    if (slider.dataset.suggested !== "") {
+      slider.disabled = false;
+      slider.value = slider.dataset.suggested;
+    } else {
+      slider.disabled = true;
+      slider.value = "0";
+    }
+  }
+
+  function applySuggested(input, slider, suggested) {
+    if (suggested === "") {
+      return;
+    }
+    input.value = suggested;
+    slider.disabled = false;
+    slider.value = suggested;
+  }
+
   function syncFinalProbabilityControls() {
     document.querySelectorAll(".final-probability-slider").forEach(function (slider) {
       var input = document.getElementById(slider.dataset.inputId);
       if (!input) {
         return;
+      }
+      var serverFinal = input.dataset.serverFinal || "";
+      if (input.dataset.finalState === "blank") {
+        clearFinal(input, slider);
+      } else {
+        input.value = serverFinal;
+        slider.disabled = false;
+        slider.value = serverFinal;
       }
       slider.addEventListener("input", function () {
         input.value = slider.value;
@@ -169,13 +239,7 @@
       input.addEventListener("input", function () {
         var raw = input.value.trim();
         if (raw === "") {
-          if (slider.dataset.suggested !== "") {
-            slider.disabled = false;
-            slider.value = slider.dataset.suggested;
-          } else {
-            slider.disabled = true;
-            slider.value = "0";
-          }
+          clearFinal(input, slider);
           return;
         }
         var value = Number(raw);
@@ -185,6 +249,54 @@
         }
       });
     });
+    document.querySelectorAll(".use-suggested-final").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var input = document.getElementById(button.dataset.inputId);
+        var slider = document.getElementById(button.dataset.sliderId);
+        if (!input || !slider) {
+          return;
+        }
+        applySuggested(input, slider, button.dataset.suggested || "");
+      });
+    });
+    document.querySelectorAll(".clear-final").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var input = document.getElementById(button.dataset.inputId);
+        var slider = document.getElementById(button.dataset.sliderId);
+        if (!input || !slider) {
+          return;
+        }
+        clearFinal(input, slider);
+      });
+    });
+    var applyAll = document.getElementById("apply_suggestions_to_blank");
+    if (applyAll) {
+      applyAll.addEventListener("click", function () {
+        document.querySelectorAll(".final-probability-input").forEach(function (input) {
+          if (input.value.trim() !== "") {
+            return;
+          }
+          var slider = document.getElementById(input.dataset.sliderId);
+          if (!slider) {
+            return;
+          }
+          applySuggested(input, slider, slider.dataset.suggested || "");
+        });
+      });
+    }
+    var clearAll = document.getElementById("clear_all_finals");
+    if (clearAll) {
+      clearAll.addEventListener("click", function () {
+        document.querySelectorAll(".final-probability-input").forEach(function (input) {
+          var slider = document.getElementById(input.dataset.sliderId);
+          if (slider) {
+            clearFinal(input, slider);
+          } else {
+            input.value = "";
+          }
+        });
+      });
+    }
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", syncFinalProbabilityControls);

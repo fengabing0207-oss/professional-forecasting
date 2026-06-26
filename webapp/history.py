@@ -55,7 +55,11 @@ def list_sessions(conn: sqlite3.Connection) -> list[dict[str, Any]]:
                (SELECT MAX(created_at) FROM prediction_snapshots p WHERE p.session_id = s.id)
                    AS latest_prediction_at,
                (SELECT MAX(created_at) FROM scoring_snapshots sc WHERE sc.session_id = s.id)
-                   AS latest_scoring_at
+                   AS latest_scoring_at,
+               (SELECT MAX(created_at) FROM context_snapshots c WHERE c.session_id = s.id)
+                   AS latest_context_at,
+               (SELECT MAX(created_at) FROM assistant_snapshots a WHERE a.session_id = s.id)
+                   AS latest_assistant_at
         FROM sessions s
         ORDER BY s.updated_at DESC, s.id DESC
         """,
@@ -76,6 +80,16 @@ def save_prediction_snapshot(conn: sqlite3.Connection, session_id: int,
 def save_scoring_snapshot(conn: sqlite3.Connection, session_id: int,
                           csv_text: str, summary: dict[str, Any]) -> int:
     return _save_snapshot(conn, "scoring_snapshots", session_id, csv_text, summary=summary)
+
+
+def save_context_snapshot(conn: sqlite3.Connection, session_id: int,
+                          context_json: str, source: str = "live_prediction") -> int:
+    return _save_json_snapshot(conn, "context_snapshots", session_id, context_json, source)
+
+
+def save_assistant_snapshot(conn: sqlite3.Connection, session_id: int,
+                            assistant_json: str, source: str = "live_prediction") -> int:
+    return _save_json_snapshot(conn, "assistant_snapshots", session_id, assistant_json, source)
 
 
 def _save_snapshot(conn: sqlite3.Connection, table: str, session_id: int,
@@ -102,6 +116,27 @@ def _save_snapshot(conn: sqlite3.Connection, table: str, session_id: int,
     return int(cur.lastrowid)
 
 
+def _save_json_snapshot(conn: sqlite3.Connection, table: str, session_id: int,
+                        json_text: str, source: str) -> int:
+    get_session(conn, session_id)
+    if not json_text.strip():
+        raise ValueError("json_text is required")
+    ts = now_iso()
+    if table == "context_snapshots":
+        column = "context_json"
+    elif table == "assistant_snapshots":
+        column = "assistant_json"
+    else:
+        raise ValueError(f"unsupported snapshot table: {table}")
+    cur = conn.execute(
+        f"INSERT INTO {table} (session_id, created_at, source, {column}) VALUES (?, ?, ?, ?)",
+        (session_id, ts, source or "live_prediction", json_text),
+    )
+    conn.execute("UPDATE sessions SET updated_at = ? WHERE id = ?", (ts, session_id))
+    conn.commit()
+    return int(cur.lastrowid)
+
+
 def latest_question_snapshot(conn: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
     return _latest(conn, "question_snapshots", session_id)
 
@@ -112,6 +147,14 @@ def latest_prediction_snapshot(conn: sqlite3.Connection, session_id: int) -> sql
 
 def latest_scoring_snapshot(conn: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
     return _latest(conn, "scoring_snapshots", session_id)
+
+
+def latest_context_snapshot(conn: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
+    return _latest(conn, "context_snapshots", session_id)
+
+
+def latest_assistant_snapshot(conn: sqlite3.Connection, session_id: int) -> sqlite3.Row | None:
+    return _latest(conn, "assistant_snapshots", session_id)
 
 
 def _latest(conn: sqlite3.Connection, table: str, session_id: int) -> sqlite3.Row | None:
@@ -137,6 +180,16 @@ def snapshot_history(conn: sqlite3.Connection, session_id: int) -> dict[str, lis
         "scoring": [dict(row) for row in query_all(
             conn,
             "SELECT * FROM scoring_snapshots WHERE session_id = ? ORDER BY created_at DESC, id DESC",
+            (session_id,),
+        )],
+        "context": [dict(row) for row in query_all(
+            conn,
+            "SELECT * FROM context_snapshots WHERE session_id = ? ORDER BY created_at DESC, id DESC",
+            (session_id,),
+        )],
+        "assistant": [dict(row) for row in query_all(
+            conn,
+            "SELECT * FROM assistant_snapshots WHERE session_id = ? ORDER BY created_at DESC, id DESC",
             (session_id,),
         )],
     }
