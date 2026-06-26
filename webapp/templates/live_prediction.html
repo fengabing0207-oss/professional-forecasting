@@ -21,7 +21,7 @@
     </div>
   </section>
 {% else %}
-  <form method="post">
+  <form method="post" autocomplete="off">
     <section class="band">
       <h2>Match Context</h2>
       {% if latest_context %}
@@ -104,6 +104,9 @@
               value="{{ row.final_probability_percent }}"
               placeholder="51"
               data-slider-id="final_probability_slider_{{ loop.index0 }}"
+              data-server-final="{{ row.final_probability_percent }}"
+              data-final-state="{{ 'set' if row.final_probability_percent else 'blank' }}"
+              autocomplete="off"
             >
           </label>
           <input
@@ -116,6 +119,7 @@
             value="{{ slider_value if slider_value != '' else 0 }}"
             data-input-id="final_probability_percent_{{ loop.index0 }}"
             data-suggested="{{ row.suggested_probability_percent }}"
+            data-server-final="{{ row.final_probability_percent }}"
             aria-label="probability slider for question {{ loop.index }}"
             {% if slider_value == "" %}disabled{% endif %}
           >
@@ -180,6 +184,14 @@
       var input = document.getElementById(slider.dataset.inputId);
       if (!input) {
         return;
+      }
+      var serverFinal = input.dataset.serverFinal || "";
+      if (input.dataset.finalState === "blank") {
+        input.value = "";
+      } else {
+        input.value = serverFinal;
+        slider.disabled = false;
+        slider.value = serverFinal;
       }
       slider.addEventListener("input", function () {
         input.value = slider.value;

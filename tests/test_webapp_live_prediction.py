@@ -1,3 +1,5 @@
+import re
+
 from webapp.app import create_app
 from webapp.db import connect, init_db
 from webapp.history import (
@@ -25,6 +27,19 @@ def _question_csv():
         "q1,m1,2026-06-24,England,Ghana,At halftime will the match be tied?,halftime_draw,draw_halftime,,,,,0.91,parsed,\n"
         "q2,m1,2026-06-24,England,Ghana,Will Ghana commit more fouls than England?,fouls_more_than_opponent,Ghana,,,,,0.82,parsed,\n"
     )
+
+
+def _offsides_question_csv():
+    return (
+        "question_id,match_id,match_date,home_team,away_team,raw_question,event_type,selection,threshold,player,p_manual,manual_weight,parser_confidence,status,notes\n"
+        "q1,m1,2026-06-24,England,Ghana,Will Ghana be caught offside 2 or more times?,offsides_threshold,Ghana,2,,,,0.91,parsed,\n"
+    )
+
+
+def _input_tag(body: str, input_id: str) -> str:
+    match = re.search(rf"<input\b(?=[^>]*\sid=\"{re.escape(input_id)}\")[^>]*>", body, re.S)
+    assert match is not None
+    return match.group(0)
 
 
 def test_live_route_get_without_question_snapshot_links_to_import(monkeypatch, tmp_path):
@@ -57,6 +72,37 @@ def test_live_route_get_with_question_snapshot_renders_cards(monkeypatch, tmp_pa
     assert b'id="final_probability_percent_0"' in response.data
     assert b'id="final_probability_slider_0"' in response.data
     assert b"syncFinalProbabilityControls" in response.data
+    body = response.data.decode("utf-8")
+    first_input = _input_tag(body, "final_probability_percent_0")
+    second_input = _input_tag(body, "final_probability_percent_1")
+    assert 'value=""' in first_input
+    assert 'value=""' in second_input
+    assert 'value="51"' not in first_input
+    assert 'value="51"' not in second_input
+    assert 'autocomplete="off"' in body
+    assert 'autocomplete="off"' in first_input
+    assert 'data-server-final=""' in first_input
+    assert 'data-final-state="blank"' in first_input
+
+
+def test_suggested_probability_does_not_become_final_on_get(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_question_snapshot(conn, session_id, _offsides_question_csv(), source="test")
+
+    response = client.get(f"/sessions/{session_id}/live")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    final_input = _input_tag(body, "final_probability_percent_0")
+    slider_input = _input_tag(body, "final_probability_slider_0")
+    assert "50%" in body
+    assert 'value=""' in final_input
+    assert 'data-server-final=""' in final_input
+    assert 'data-suggested="50"' in slider_input
+    assert 'value="50"' in slider_input
 
 
 def test_live_route_get_prefills_latest_context_snapshot(monkeypatch, tmp_path):
@@ -148,6 +194,44 @@ def test_scoring_and_calibration_surface_saved_live_snapshots(monkeypatch, tmp_p
     assert calibration_response.status_code == 200
     assert b"Saved live sessions are available" in calibration_response.data
     assert b"M1" in calibration_response.data
+
+
+def test_blank_final_probabilities_are_excluded_from_manual_odds(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_question_snapshot(conn, session_id, _question_csv(), source="test")
+
+    response = client.post(
+        f"/sessions/{session_id}/live",
+        data={
+            "favorite_team": "England",
+            "expected_match_script": "",
+            "tournament_context": "",
+            "player_context": "",
+            "user_notes": "",
+            "final_probability_percent_0": "51",
+            "final_probability_percent_1": "",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    submission_match = re.search(r"<textarea rows=\"8\" readonly>(.*?)</textarea>", body, re.S)
+    assert submission_match is not None
+    submission_text = submission_match.group(1)
+    assert "Q1 51% - At halftime will the match be tied?" in submission_text
+    assert "Q2" not in submission_text
+    with connect(str(db_path)) as conn:
+        prediction = latest_prediction_snapshot(conn, session_id)
+        assistant = latest_assistant_snapshot(conn, session_id)
+    assert prediction is not None
+    assert "q1" in prediction["csv_text"]
+    assert "q2" in prediction["csv_text"]
+    assert "0.51" in prediction["csv_text"]
+    assert "missing_probability" in prediction["csv_text"]
+    assert '"final_probability_percent": ""' in assistant["assistant_json"]
 
 
 def test_latest_context_snapshot_viewer_route(monkeypatch, tmp_path):
