@@ -73,9 +73,11 @@ making Probability Cup UI changes.
 2. Review question parsing.
 3. Open Live Prediction Mode from the session page.
 4. Review assistant ranges, reasoning, risk flags, and exposure warnings.
-5. Enter final probabilities as percents.
-6. Generate predictions and inspect the manual submission sheet.
-7. Manually submit final probabilities to SportsPredict.
+5. Optionally enter manual market anchors as percent probabilities or odds.
+6. Apply recommended/heuristic values only when you explicitly choose to.
+7. Enter or confirm final probabilities as percents.
+8. Generate predictions and inspect the manual submission sheet.
+9. Manually submit final probabilities to SportsPredict.
 
 The Manual Probability Workbench uses percent mode. Enter `51` for 51%, which
 is written to the generated manual odds CSV as `0.51`. Blank inputs stay blank.
@@ -91,6 +93,23 @@ Live Prediction Mode is available at:
 
 The assistant is deterministic and heuristic. It does not scrape, call external
 APIs, train a model, or submit anything automatically.
+
+## Manual Market Anchors
+
+Live Prediction Mode supports optional, manually entered market anchors for each
+question. You may enter either a market anchor percent, such as `47` for 47%,
+or odds text such as `-160`, `+220`, `1.62`, or `2.85`. Percent values take
+priority when both percent and odds are present.
+
+Odds are converted to rough implied probabilities only. PR #5 does not devig,
+remove bookmaker margin, call an odds API, scrape, or use paid feeds. Market
+anchors influence the displayed recommendation, but they never become final
+probabilities automatically. The final probability remains a user-confirmed
+field, and the generated manual odds CSV includes only those final
+probabilities.
+
+Market anchors, context, assistant suggestions, and predictions are saved only
+to the local SQLite history database for audit and later review.
 
 ## Settled History Calibration
 

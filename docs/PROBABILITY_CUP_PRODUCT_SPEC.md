@@ -73,6 +73,8 @@ Question card:
 Assistant panel:
 
 - suggested_probability_percent
+- optional manual market anchor probability
+- anchored recommendation when market anchor exists
 - suggested_range
 - confidence: low / medium / high
 - reasoning
@@ -103,6 +105,7 @@ Interaction:
 - `0.51` in percent mode is rejected or clearly normalized only if explicitly supported.
 - No silent 50% default.
 - Parser confidence never becomes probability.
+- Market anchors never become final probability automatically.
 - Each card should show whether it still needs user action.
 
 Submission sheet:
@@ -115,6 +118,33 @@ Q2 raw question final_probability_percent
 ```
 
 This is for manual SportsPredict entry only. No auto-submit.
+
+## Manual Market Anchors
+
+Live Prediction Mode may accept optional, manually entered market anchors. These
+are local notes from the user, not scraped data and not an external feed.
+
+Supported inputs:
+
+- market anchor percent, e.g. `47`
+- American odds, e.g. `-160` or `+220`
+- decimal odds, e.g. `1.62` or `2.85`
+- market source / notes
+
+If both percent and odds are entered, percent takes priority. Odds convert to
+rough implied probability only. No devig or bookmaker-margin adjustment is
+performed in PR #5.
+
+When both heuristic and market anchor exist, the recommended probability is a
+transparent blend:
+
+```text
+0.60 * market_anchor + 0.40 * heuristic
+```
+
+Market anchors and recommendations remain guidance. Final probability must
+still be explicitly confirmed by the user, and the manual odds CSV is generated
+from final probabilities only.
 
 ## Prediction Assistant v0 Heuristics
 

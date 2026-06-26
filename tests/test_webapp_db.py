@@ -19,6 +19,7 @@ def test_database_initializes_all_required_tables():
             "scoring_snapshots",
             "context_snapshots",
             "assistant_snapshots",
+            "market_snapshots",
             "run_logs",
         }.issubset(names)
 

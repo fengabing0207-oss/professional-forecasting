@@ -40,6 +40,7 @@ from webapp.history import (
     get_session,
     latest_assistant_snapshot,
     latest_context_snapshot,
+    latest_market_snapshot,
     latest_prediction_snapshot,
     latest_question_snapshot,
     latest_scoring_snapshot,
@@ -47,6 +48,7 @@ from webapp.history import (
     log_run,
     save_assistant_snapshot,
     save_context_snapshot,
+    save_market_snapshot,
     save_prediction_snapshot,
     save_question_snapshot,
     save_scoring_snapshot,
@@ -138,6 +140,7 @@ def create_app() -> Flask:
             s = latest_scoring_snapshot(conn, session_id)
             c = latest_context_snapshot(conn, session_id)
             a = latest_assistant_snapshot(conn, session_id)
+            m = latest_market_snapshot(conn, session_id)
         return render_template(
             "session_detail.html",
             session=session,
@@ -146,6 +149,7 @@ def create_app() -> Flask:
             scoring=s,
             context_snapshot=c,
             assistant_snapshot=a,
+            market_snapshot=m,
             question_preview=_preview_csv(q["csv_text"] if q else ""),
             prediction_preview=_preview_csv(p["csv_text"] if p else ""),
             scoring_preview=_preview_csv(s["csv_text"] if s else ""),
@@ -272,8 +276,10 @@ def create_app() -> Flask:
             session = get_session(conn, session_id)
             latest_q = latest_question_snapshot(conn, session_id)
             latest_context = latest_context_snapshot(conn, session_id)
+            latest_market = latest_market_snapshot(conn, session_id)
         question_csv = latest_q["csv_text"] if latest_q else ""
         saved_context = _context_from_snapshot(latest_context)
+        saved_market = _market_from_snapshot(latest_market)
         match_context = _live_match_context(request.form if request.method == "POST" else saved_context)
         assistant_rows = []
         prediction_csv = ""
@@ -303,6 +309,12 @@ def create_app() -> Flask:
                         _assistant_snapshot_json(assistant_rows),
                         source="live_prediction",
                     )
+                    market_id = save_market_snapshot(
+                        conn,
+                        session_id,
+                        _market_snapshot_json(assistant_rows),
+                        source="live_prediction",
+                    )
                     save_prediction_snapshot(conn, session_id, prediction_csv, summary)
                     log_run(conn, "info", "generated live-mode predictions", session_id)
                 submission_sheet = _submission_sheet(assistant_rows)
@@ -310,6 +322,7 @@ def create_app() -> Flask:
                 audit_summary = {
                     "context_snapshot_id": context_id,
                     "assistant_snapshot_id": assistant_id,
+                    "market_snapshot_id": market_id,
                     "prediction_snapshot_saved": True,
                     "final_probabilities_entered": sum(
                         1 for row in assistant_rows if row.get("final_probability_percent")
@@ -330,7 +343,7 @@ def create_app() -> Flask:
                     validate_final=False,
                 )
         else:
-            assistant_rows = _live_assistant_rows(question_csv, match_context, {})
+            assistant_rows = _live_assistant_rows(question_csv, match_context, {}, saved_market)
         total_questions = len(assistant_rows)
         completion_count = sum(1 for row in assistant_rows if row.get("final_probability_percent"))
         return render_template(
@@ -348,6 +361,7 @@ def create_app() -> Flask:
             summary=summary,
             audit_summary=audit_summary,
             latest_context=latest_context,
+            latest_market=latest_market,
         )
 
     @app.route("/sessions/<int:session_id>/scoring", methods=["GET", "POST"])
@@ -358,10 +372,12 @@ def create_app() -> Flask:
             latest_s = latest_scoring_snapshot(conn, session_id)
             latest_c = latest_context_snapshot(conn, session_id)
             latest_a = latest_assistant_snapshot(conn, session_id)
+            latest_m = latest_market_snapshot(conn, session_id)
         predictions_csv = latest_p["csv_text"] if latest_p else ""
         scoring_csv = latest_s["csv_text"] if latest_s else ""
         summary = _summary_from_snapshot(latest_s)
         final_probability_rows = _final_probability_rows_from_snapshot(latest_a)
+        market_rows = _market_rows_from_snapshot(latest_m)
         if request.method == "POST":
             predictions_csv = request.form.get("predictions_csv", "")
             results_csv = _field_or_upload("results_csv", "results_file")
@@ -383,7 +399,9 @@ def create_app() -> Flask:
             summary=summary,
             context_snapshot=latest_c,
             assistant_snapshot=latest_a,
+            market_snapshot=latest_m,
             final_probability_rows=final_probability_rows,
+            market_rows=market_rows,
         )
 
     @app.get("/sessions/<int:session_id>/history")
@@ -420,6 +438,7 @@ def create_app() -> Flask:
         latest_loaders = {
             "context": latest_context_snapshot,
             "assistant": latest_assistant_snapshot,
+            "market": latest_market_snapshot,
         }
         loader = latest_loaders.get(kind)
         if loader is None:
@@ -442,6 +461,7 @@ def create_app() -> Flask:
         tables = {
             "context": ("context_snapshots", "context_json"),
             "assistant": ("assistant_snapshots", "assistant_json"),
+            "market": ("market_snapshots", "market_json"),
         }
         table_info = tables.get(kind)
         if table_info is None:
@@ -471,7 +491,7 @@ def create_app() -> Flask:
         with connect() as conn:
             live_snapshot_sessions = [
                 row for row in list_sessions(conn)
-                if row.get("latest_assistant_at") or row.get("latest_context_at")
+                if row.get("latest_assistant_at") or row.get("latest_context_at") or row.get("latest_market_at")
             ]
         if request.method == "POST":
             csv_text = _field_or_upload("csv_text", "csv_file")
@@ -613,6 +633,14 @@ def _assistant_snapshot_json(rows: list[dict[str, Any]]) -> str:
         "risk_flags",
         "exposure_warnings",
         "final_probability_percent",
+        "market_anchor_percent",
+        "market_anchor_probability_percent",
+        "market_odds",
+        "market_source",
+        "odds_format_detected",
+        "anchored_probability_percent",
+        "anchored_range",
+        "recommendation_probability_percent",
     ]
     payload = [
         {key: _jsonable(row.get(key, "")) for key in keep}
@@ -621,20 +649,76 @@ def _assistant_snapshot_json(rows: list[dict[str, Any]]) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def _market_from_snapshot(snapshot: Any) -> list[dict[str, str]]:
+    if not snapshot:
+        return []
+    try:
+        rows = json.loads(snapshot["market_json"])
+    except Exception:
+        return []
+    return [
+        {
+            "market_anchor_percent": str(row.get("market_anchor_percent_input", "")),
+            "market_odds": str(row.get("market_odds_input", "")),
+            "market_source": str(row.get("market_source", "")),
+        }
+        for row in rows
+    ]
+
+
+def _market_snapshot_json(rows: list[dict[str, Any]]) -> str:
+    payload = []
+    for index, row in enumerate(rows, start=1):
+        payload.append({
+            "q_number": f"Q{index}",
+            "question_id": str(row.get("question_id", "")),
+            "raw_question": str(row.get("raw_question", "")),
+            "event_type": str(row.get("event_type", "")),
+            "market_anchor_percent_input": str(row.get("market_anchor_percent", "")),
+            "market_odds_input": str(row.get("market_odds", "")),
+            "market_source": str(row.get("market_source", "")),
+            "normalized_market_anchor_probability": _jsonable(row.get("market_anchor_probability")),
+            "normalized_market_anchor_probability_percent": _jsonable(row.get("market_anchor_probability_percent", "")),
+            "odds_format_detected": str(row.get("odds_format_detected", "")),
+            "notes": "manual market anchor; no devig applied" if row.get("odds_format_detected") else "manual market anchor",
+        })
+    return json.dumps(payload, indent=2, sort_keys=True)
+
+
 def _live_assistant_rows(
     question_csv: str,
     match_context: dict[str, str],
     form: Any,
+    saved_market: list[dict[str, str]] | None = None,
     validate_final: bool = True,
 ) -> list[dict[str, Any]]:
     question_rows = _preview_csv(question_csv, limit=10)
     rows = []
     for index, row in enumerate(question_rows):
+        saved_market_row = (saved_market or [{}] * len(question_rows))[index] if index < len(saved_market or []) else {}
         final_value = form.get(f"final_probability_percent_{index}", "") if form else ""
+        market_anchor_percent = (
+            form.get(f"market_anchor_percent_{index}", "")
+            if form else saved_market_row.get("market_anchor_percent", "")
+        )
+        market_odds = (
+            form.get(f"market_odds_{index}", "")
+            if form else saved_market_row.get("market_odds", "")
+        )
+        market_source = (
+            form.get(f"market_source_{index}", "")
+            if form else saved_market_row.get("market_source", "")
+        )
         row["final_probability_percent"] = final_value if validate_final else ""
+        row["market_anchor_percent"] = market_anchor_percent if validate_final else ""
+        row["market_odds"] = market_odds if validate_final else ""
+        row["market_source"] = market_source
         suggested = prediction_assistant.suggest_probability_for_question(row, match_context)
         if not validate_final:
             suggested["final_probability_percent"] = final_value
+            suggested["market_anchor_percent"] = market_anchor_percent
+            suggested["market_odds"] = market_odds
+            suggested["market_source"] = market_source
         rows.append(suggested)
     exposure_warnings = []
     if validate_final:
@@ -687,8 +771,33 @@ def _final_probability_rows_from_snapshot(snapshot: Any) -> list[dict[str, str]]
     return final_rows
 
 
+def _market_rows_from_snapshot(snapshot: Any) -> list[dict[str, str]]:
+    if not snapshot:
+        return []
+    try:
+        rows = json.loads(snapshot["market_json"])
+    except Exception:
+        return []
+    return [
+        {
+            "q_number": str(row.get("q_number", "")),
+            "question_id": str(row.get("question_id", "")),
+            "raw_question": str(row.get("raw_question", "")),
+            "market_anchor_probability_percent": str(row.get("normalized_market_anchor_probability_percent", "")),
+            "market_source": str(row.get("market_source", "")),
+        }
+        for row in rows
+        if row.get("normalized_market_anchor_probability_percent") not in (None, "")
+    ]
+
+
 def _json_snapshot_text(row: Any, kind: str) -> str:
-    column = "context_json" if kind == "context" else "assistant_json"
+    columns = {
+        "context": "context_json",
+        "assistant": "assistant_json",
+        "market": "market_json",
+    }
+    column = columns[kind]
     return row[column]
 
 

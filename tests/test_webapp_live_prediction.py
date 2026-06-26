@@ -6,9 +6,11 @@ from webapp.history import (
     create_session,
     latest_assistant_snapshot,
     latest_context_snapshot,
+    latest_market_snapshot,
     latest_prediction_snapshot,
     save_assistant_snapshot,
     save_context_snapshot,
+    save_market_snapshot,
     save_question_snapshot,
 )
 
@@ -72,10 +74,13 @@ def test_live_route_get_with_question_snapshot_renders_cards(monkeypatch, tmp_pa
     assert b'id="final_probability_percent_0"' in response.data
     assert b'id="final_probability_slider_0"' in response.data
     assert b"syncFinalProbabilityControls" in response.data
-    assert b"Apply assistant suggestions to all blank finals" in response.data
+    assert b"Apply recommendations to all blank finals" in response.data
     assert b"Clear all finals" in response.data
-    assert b"Use suggested" in response.data
+    assert b"Use recommended" in response.data
+    assert b"Use heuristic" in response.data
     assert b"Clear final" in response.data
+    assert b"Market anchor %" in response.data
+    assert b"Market odds" in response.data
     body = response.data.decode("utf-8")
     first_input = _input_tag(body, "final_probability_percent_0")
     second_input = _input_tag(body, "final_probability_percent_1")
@@ -88,11 +93,12 @@ def test_live_route_get_with_question_snapshot_renders_cards(monkeypatch, tmp_pa
     assert 'autocomplete="off"' in first_input
     assert 'data-server-final=""' in first_input
     assert 'data-final-state="blank"' in first_input
-    assert 'id="apply_suggestions_to_blank"' in body
+    assert 'id="apply_recommendations_to_blank"' in body
     assert 'id="clear_all_finals"' in body
-    assert 'class="use-suggested-final"' in body
+    assert 'class="use-recommended-final"' in body
+    assert 'class="use-heuristic-final"' in body
     assert 'class="clear-final"' in body
-    assert "applySuggested(input, slider" in body
+    assert "applyGuidance(input, slider" in body
     assert "clearFinal(input, slider)" in body
 
 
@@ -114,7 +120,8 @@ def test_suggested_probability_does_not_become_final_on_get(monkeypatch, tmp_pat
     assert 'data-server-final=""' in final_input
     assert 'data-suggested="50"' in slider_input
     assert 'value="50"' in slider_input
-    assert 'class="use-suggested-final"' in body
+    assert 'class="use-recommended-final"' in body
+    assert 'class="use-heuristic-final"' in body
     assert 'data-suggested="50"' in body
 
 
@@ -130,6 +137,12 @@ def test_live_route_get_prefills_latest_context_snapshot(monkeypatch, tmp_path):
             '{"favorite_team": "England", "expected_match_script": "open late", "tournament_context": "must-win", "player_context": "rotation risk", "user_notes": "watch cards"}',
             source="test",
         )
+        save_market_snapshot(
+            conn,
+            session_id,
+            '[{"market_anchor_percent_input": "44", "market_odds_input": "-160", "market_source": "manual market check"}]',
+            source="test",
+        )
 
     response = client.get(f"/sessions/{session_id}/live")
 
@@ -137,7 +150,11 @@ def test_live_route_get_prefills_latest_context_snapshot(monkeypatch, tmp_path):
     body = response.data.decode("utf-8")
     assert 'value="England"' in body
     assert 'value="open late"' in body
+    assert 'value="44"' in body
+    assert 'value="-160"' in body
+    assert 'value="manual market check"' in body
     assert "Prefilled from latest saved context snapshot" in body
+    assert "Prefilled from latest saved market snapshot" in body
 
 
 def test_live_route_post_saves_context_assistant_prediction_and_submission_sheet(monkeypatch, tmp_path):
@@ -157,6 +174,9 @@ def test_live_route_post_saves_context_assistant_prediction_and_submission_sheet
             "user_notes": "",
             "final_probability_percent_0": "51",
             "final_probability_percent_1": "60",
+            "market_anchor_percent_0": "44",
+            "market_odds_1": "-160",
+            "market_source_1": "manual market check",
         },
     )
 
@@ -169,11 +189,15 @@ def test_live_route_post_saves_context_assistant_prediction_and_submission_sheet
         prediction = latest_prediction_snapshot(conn, session_id)
         context = latest_context_snapshot(conn, session_id)
         assistant = latest_assistant_snapshot(conn, session_id)
+        market = latest_market_snapshot(conn, session_id)
     assert prediction is not None
     assert context is not None
     assert assistant is not None
+    assert market is not None
     assert '"favorite_team": "England"' in context["context_json"]
     assert '"final_probability_percent": "60"' in assistant["assistant_json"]
+    assert '"market_anchor_probability_percent": 44' in assistant["assistant_json"]
+    assert '"market_odds_input": "-160"' in market["market_json"]
     assert "0.51" in prediction["csv_text"]
     assert "missing_probability" not in prediction["csv_text"]
 
@@ -195,18 +219,85 @@ def test_scoring_and_calibration_surface_saved_live_snapshots(monkeypatch, tmp_p
             "user_notes": "",
             "final_probability_percent_0": "51",
             "final_probability_percent_1": "",
+            "market_anchor_percent_0": "44",
         },
     )
 
     scoring_response = client.get(f"/sessions/{session_id}/scoring")
     assert scoring_response.status_code == 200
     assert b"Latest Saved Final Probabilities" in scoring_response.data
+    assert b"Latest Saved Market Anchors" in scoring_response.data
     assert b"assistant suggestions/finals" in scoring_response.data
+    assert b"market anchors" in scoring_response.data
 
     calibration_response = client.get("/calibration")
     assert calibration_response.status_code == 200
     assert b"Saved live sessions are available" in calibration_response.data
     assert b"M1" in calibration_response.data
+
+
+def test_market_percent_and_odds_inputs_save_market_snapshot(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_question_snapshot(conn, session_id, _question_csv(), source="test")
+
+    response = client.post(
+        f"/sessions/{session_id}/live",
+        data={
+            "final_probability_percent_0": "51",
+            "final_probability_percent_1": "",
+            "market_anchor_percent_0": "44",
+            "market_odds_1": "+220",
+            "market_source_1": "sportsbook",
+        },
+    )
+
+    assert response.status_code == 200
+    with connect(str(db_path)) as conn:
+        market = latest_market_snapshot(conn, session_id)
+        assistant = latest_assistant_snapshot(conn, session_id)
+        prediction = latest_prediction_snapshot(conn, session_id)
+    assert market is not None
+    assert '"market_anchor_percent_input": "44"' in market["market_json"]
+    assert '"normalized_market_anchor_probability_percent": 44' in market["market_json"]
+    assert '"market_odds_input": "+220"' in market["market_json"]
+    assert '"odds_format_detected": "american"' in market["market_json"]
+    assert '"manual_market_no_devig"' in assistant["assistant_json"]
+    assert "0.51" in prediction["csv_text"]
+    assert "+220" not in prediction["csv_text"]
+    assert "0.3125" not in prediction["csv_text"]
+
+
+def test_invalid_market_input_preserves_fields_and_saves_no_snapshots(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_question_snapshot(conn, session_id, _question_csv(), source="test")
+
+    response = client.post(
+        f"/sessions/{session_id}/live",
+        data={
+            "final_probability_percent_0": "51",
+            "final_probability_percent_1": "60",
+            "market_anchor_percent_0": "0.51",
+            "market_odds_1": "abc",
+            "market_source_1": "manual",
+        },
+    )
+
+    assert response.status_code == 200
+    assert b"enter 51" in response.data
+    assert b'value="60"' in response.data
+    assert b'value="0.51"' in response.data
+    assert b'value="abc"' in response.data
+    with connect(str(db_path)) as conn:
+        assert latest_context_snapshot(conn, session_id) is None
+        assert latest_market_snapshot(conn, session_id) is None
+        assert latest_assistant_snapshot(conn, session_id) is None
+        assert latest_prediction_snapshot(conn, session_id) is None
 
 
 def test_blank_final_probabilities_are_excluded_from_manual_odds(monkeypatch, tmp_path):
@@ -275,6 +366,20 @@ def test_latest_assistant_snapshot_viewer_route(monkeypatch, tmp_path):
     assert b"question_id" in response.data
 
 
+def test_latest_market_snapshot_viewer_route(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        save_market_snapshot(conn, session_id, '[{"question_id": "q1", "market_anchor_percent_input": "44"}]', source="test")
+
+    response = client.get(f"/sessions/{session_id}/snapshots/market/latest")
+
+    assert response.status_code == 200
+    assert b"Latest market snapshot" in response.data
+    assert b"market_anchor_percent_input" in response.data
+
+
 def test_context_snapshot_viewer_route_by_id(monkeypatch, tmp_path):
     client, db_path = _client_with_db(monkeypatch, tmp_path)
     with connect(str(db_path)) as conn:
@@ -287,6 +392,20 @@ def test_context_snapshot_viewer_route_by_id(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert b"Context snapshot" in response.data
     assert b"favorite_team" in response.data
+
+
+def test_market_snapshot_viewer_route_by_id(monkeypatch, tmp_path):
+    client, db_path = _client_with_db(monkeypatch, tmp_path)
+    with connect(str(db_path)) as conn:
+        init_db(conn)
+        session_id = create_session(conn, match_id="M1", home_team="England", away_team="Ghana")
+        snapshot_id = save_market_snapshot(conn, session_id, '[{"question_id": "q1"}]', source="test")
+
+    response = client.get(f"/sessions/{session_id}/snapshots/market/{snapshot_id}")
+
+    assert response.status_code == 200
+    assert b"Market snapshot" in response.data
+    assert b"question_id" in response.data
 
 
 def test_invalid_snapshot_kind_returns_404(monkeypatch, tmp_path):
@@ -330,6 +449,8 @@ def test_live_route_post_rejects_ambiguous_decimal_percent(monkeypatch, tmp_path
         prediction = latest_prediction_snapshot(conn, session_id)
         context = latest_context_snapshot(conn, session_id)
         assistant = latest_assistant_snapshot(conn, session_id)
+        market = latest_market_snapshot(conn, session_id)
     assert prediction is None
     assert context is None
     assert assistant is None
+    assert market is None

@@ -5,11 +5,13 @@ from webapp.history import (
     create_session,
     latest_assistant_snapshot,
     latest_context_snapshot,
+    latest_market_snapshot,
     latest_prediction_snapshot,
     latest_question_snapshot,
     latest_scoring_snapshot,
     save_assistant_snapshot,
     save_context_snapshot,
+    save_market_snapshot,
     save_prediction_snapshot,
     save_question_snapshot,
     save_scoring_snapshot,
@@ -82,6 +84,18 @@ def test_assistant_snapshot_save_load_works():
         fh.close()
 
 
+def test_market_snapshot_save_load_works():
+    fh, conn = _conn()
+    try:
+        session_id = create_session(conn, match_id="M", home_team="H", away_team="A")
+        save_market_snapshot(conn, session_id, '[{"question_id": "q1", "market_anchor_percent_input": "44"}]', source="test")
+        row = latest_market_snapshot(conn, session_id)
+        assert '"market_anchor_percent_input": "44"' in row["market_json"]
+        assert row["source"] == "test"
+    finally:
+        fh.close()
+
+
 def test_history_ordering_works():
     fh, conn = _conn()
     try:
@@ -90,10 +104,12 @@ def test_history_ordering_works():
         second = save_question_snapshot(conn, session_id, "question_id\nq2\n")
         context = save_context_snapshot(conn, session_id, '{"favorite_team": "H"}', source="test")
         assistant = save_assistant_snapshot(conn, session_id, '[{"question_id": "q1"}]', source="test")
+        market = save_market_snapshot(conn, session_id, '[{"question_id": "q1"}]', source="test")
         hist = snapshot_history(conn, session_id)
         assert hist["questions"][0]["id"] == second
         assert hist["questions"][1]["id"] == first
         assert hist["context"][0]["id"] == context
         assert hist["assistant"][0]["id"] == assistant
+        assert hist["market"][0]["id"] == market
     finally:
         fh.close()

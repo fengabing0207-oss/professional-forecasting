@@ -88,6 +88,62 @@ def test_compound_btts_total_flags_compound_condition():
     assert "compound_condition" in out["risk_flags"]
 
 
+def test_market_anchor_blends_with_heuristic_and_flags_divergence():
+    out = suggest_probability_for_question({
+        "question_id": "q1",
+        "event_type": "second_half_total_shots_on_target_threshold",
+        "raw_question": "Will there be 4+ total shots on target in the second half?",
+        "selection": "second_half_total",
+        "threshold": "4",
+        "market_anchor_percent": "40",
+    })
+    assert out["suggested_probability"] == 0.56
+    assert out["market_anchor_probability"] == 0.40
+    assert out["anchored_probability"] == 0.464
+    assert out["recommendation_probability_percent"] == 46.4
+    assert "market_heuristic_divergence" in out["risk_flags"]
+
+
+def test_market_anchor_only_recommendation_and_flag():
+    out = suggest_probability_for_question({
+        "question_id": "q1",
+        "event_type": "some_unknown_event",
+        "raw_question": "Will something unusual happen?",
+        "market_anchor_percent": "44",
+    })
+    assert out["suggested_probability"] is None
+    assert out["anchored_probability"] == 0.44
+    assert out["recommendation_probability_percent"] == 44
+    assert "market_anchor_only" in out["risk_flags"]
+
+
+def test_final_far_from_market_and_recommendation_flags():
+    out = suggest_probability_for_question({
+        "question_id": "q1",
+        "event_type": "offsides_threshold",
+        "raw_question": "Will Ghana be caught offside 2 or more times?",
+        "selection": "Ghana",
+        "threshold": "2",
+        "market_anchor_percent": "35",
+        "final_probability_percent": "70",
+    })
+    assert "final_far_from_market" in out["risk_flags"]
+    assert "final_far_from_recommendation" in out["risk_flags"]
+
+
+def test_odds_derived_anchor_adds_no_devig_flag():
+    out = suggest_probability_for_question({
+        "question_id": "q1",
+        "event_type": "team_win",
+        "raw_question": "Will England win?",
+        "selection": "England",
+        "market_odds": "-160",
+    })
+    assert out["market_anchor_probability"] == 0.6154
+    assert out["odds_format_detected"] == "american"
+    assert "manual_market_no_devig" in out["risk_flags"]
+
+
 def test_underdog_five_plus_corners_stays_below_45():
     out = suggest_probability_for_question(
         {

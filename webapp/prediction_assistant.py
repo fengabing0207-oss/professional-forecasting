@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from cup.schema import GOAL_EVENT_TYPES, ODDS_COLUMNS
+from webapp.market_anchor import market_anchor_probability, odds_format
 
 
 EXPOSURE_WARNING = "You may be overexposed to the same match script."
@@ -34,6 +35,12 @@ def suggest_probability_for_question(
     player = _text(data.get("player"))
     period = _period(raw_question, normalized_event_type, selection)
     final_probability_percent = _text(data.get("final_probability_percent"))
+    market_anchor_percent = _text(data.get("market_anchor_percent"))
+    market_odds = _text(data.get("market_odds"))
+    market_source = _text(data.get("market_source"))
+    market_probability = market_anchor_probability(market_anchor_percent, market_odds)
+    market_probability_percent = _percent(market_probability) if market_probability is not None else ""
+    market_odds_format = odds_format(market_odds) if market_odds and market_probability is not None and not market_anchor_percent else ""
 
     out = {
         "question_id": _text(data.get("question_id")),
@@ -56,6 +63,16 @@ def suggest_probability_for_question(
         "risk_flags": ["needs_manual"],
         "exposure_warnings": [],
         "final_probability_percent": final_probability_percent,
+        "market_anchor_percent": market_anchor_percent,
+        "market_anchor_probability": None,
+        "market_anchor_probability_percent": "",
+        "market_odds": market_odds,
+        "market_source": market_source,
+        "odds_format_detected": market_odds_format,
+        "anchored_probability": None,
+        "anchored_probability_percent": "",
+        "anchored_range": "",
+        "recommendation_probability_percent": "",
     }
 
     normalized_data = {**data, "event_type": normalized_event_type}
@@ -73,11 +90,44 @@ def suggest_probability_for_question(
             "risk_flags": flags,
         })
 
+    heuristic_probability = out["suggested_probability"]
+    if market_probability is not None:
+        out["market_anchor_probability"] = round(market_probability, 4)
+        out["market_anchor_probability_percent"] = market_probability_percent
+        anchored_probability = market_probability
+        market_reason = f"Manual market anchor {market_probability_percent}%"
+        if heuristic_probability is not None:
+            anchored_probability = _clamp(0.60 * market_probability + 0.40 * float(heuristic_probability), 0.01, 0.99)
+            market_reason = (
+                f"Manual market anchor {market_probability_percent}% was blended with heuristic "
+                f"{_percent(float(heuristic_probability))}% using 60% market / 40% heuristic weight."
+            )
+            if abs(market_probability - float(heuristic_probability)) >= 0.15:
+                out["risk_flags"] = _dedupe(out["risk_flags"] + ["market_heuristic_divergence"])
+        else:
+            out["risk_flags"] = _dedupe(out["risk_flags"] + ["market_anchor_only"])
+            market_reason = f"Manual market anchor {market_probability_percent}% is used as the recommendation because no heuristic matched."
+        if market_odds_format:
+            out["risk_flags"] = _dedupe(out["risk_flags"] + ["manual_market_no_devig"])
+            market_reason += f" Market odds {market_odds} imply about {market_probability_percent}% before vig adjustment; no devig applied."
+        out["anchored_probability"] = round(anchored_probability, 4)
+        out["anchored_probability_percent"] = _percent(anchored_probability)
+        out["anchored_range"] = f"{_percent(_clamp(anchored_probability - 0.04, 0.01, 0.99))}-{_percent(_clamp(anchored_probability + 0.04, 0.01, 0.99))}%"
+        out["recommendation_probability_percent"] = out["anchored_probability_percent"]
+        out["reasoning"] = f"{out['reasoning']} {market_reason}"
+    elif heuristic_probability is not None:
+        out["recommendation_probability_percent"] = out["suggested_probability_percent"]
+
     final_probability = normalize_final_probability_percent(final_probability_percent)
     if final_probability is not None:
         out["risk_flags"] = _dedupe(
             out["risk_flags"] + _final_probability_risks(normalized_data, context, final_probability)
         )
+        recommendation_probability = out["anchored_probability"] or out["suggested_probability"]
+        if market_probability is not None and abs(final_probability - market_probability) >= 0.15:
+            out["risk_flags"] = _dedupe(out["risk_flags"] + ["final_far_from_market"])
+        if recommendation_probability is not None and abs(final_probability - float(recommendation_probability)) >= 0.15:
+            out["risk_flags"] = _dedupe(out["risk_flags"] + ["final_far_from_recommendation"])
     return out
 
 
