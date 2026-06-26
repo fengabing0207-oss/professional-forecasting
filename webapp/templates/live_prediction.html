@@ -58,6 +58,10 @@
         {% endfor %}
         <span class="muted">{{ missing_count }} missing</span>
       </div>
+      <div class="actions">
+        <button type="button" id="apply_suggestions_to_blank">Apply assistant suggestions to all blank finals</button>
+        <button type="button" id="clear_all_finals">Clear all finals</button>
+      </div>
     </section>
 
     {% for row in assistant_rows %}
@@ -123,6 +127,22 @@
             aria-label="probability slider for question {{ loop.index }}"
             {% if slider_value == "" %}disabled{% endif %}
           >
+          <div class="actions">
+            <button
+              type="button"
+              class="use-suggested-final"
+              data-input-id="final_probability_percent_{{ loop.index0 }}"
+              data-slider-id="final_probability_slider_{{ loop.index0 }}"
+              data-suggested="{{ row.suggested_probability_percent }}"
+              {% if row.suggested_probability_percent == "" %}disabled{% endif %}
+            >Use suggested</button>
+            <button
+              type="button"
+              class="clear-final"
+              data-input-id="final_probability_percent_{{ loop.index0 }}"
+              data-slider-id="final_probability_slider_{{ loop.index0 }}"
+            >Clear final</button>
+          </div>
         </div>
         <nav class="actions">
           {% if not loop.first %}<a href="#q{{ loop.index - 1 }}">Previous</a>{% endif %}
@@ -179,6 +199,26 @@
 {% endif %}
 <script>
 (function () {
+  function clearFinal(input, slider) {
+    input.value = "";
+    if (slider.dataset.suggested !== "") {
+      slider.disabled = false;
+      slider.value = slider.dataset.suggested;
+    } else {
+      slider.disabled = true;
+      slider.value = "0";
+    }
+  }
+
+  function applySuggested(input, slider, suggested) {
+    if (suggested === "") {
+      return;
+    }
+    input.value = suggested;
+    slider.disabled = false;
+    slider.value = suggested;
+  }
+
   function syncFinalProbabilityControls() {
     document.querySelectorAll(".final-probability-slider").forEach(function (slider) {
       var input = document.getElementById(slider.dataset.inputId);
@@ -187,7 +227,7 @@
       }
       var serverFinal = input.dataset.serverFinal || "";
       if (input.dataset.finalState === "blank") {
-        input.value = "";
+        clearFinal(input, slider);
       } else {
         input.value = serverFinal;
         slider.disabled = false;
@@ -199,13 +239,7 @@
       input.addEventListener("input", function () {
         var raw = input.value.trim();
         if (raw === "") {
-          if (slider.dataset.suggested !== "") {
-            slider.disabled = false;
-            slider.value = slider.dataset.suggested;
-          } else {
-            slider.disabled = true;
-            slider.value = "0";
-          }
+          clearFinal(input, slider);
           return;
         }
         var value = Number(raw);
@@ -215,6 +249,54 @@
         }
       });
     });
+    document.querySelectorAll(".use-suggested-final").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var input = document.getElementById(button.dataset.inputId);
+        var slider = document.getElementById(button.dataset.sliderId);
+        if (!input || !slider) {
+          return;
+        }
+        applySuggested(input, slider, button.dataset.suggested || "");
+      });
+    });
+    document.querySelectorAll(".clear-final").forEach(function (button) {
+      button.addEventListener("click", function () {
+        var input = document.getElementById(button.dataset.inputId);
+        var slider = document.getElementById(button.dataset.sliderId);
+        if (!input || !slider) {
+          return;
+        }
+        clearFinal(input, slider);
+      });
+    });
+    var applyAll = document.getElementById("apply_suggestions_to_blank");
+    if (applyAll) {
+      applyAll.addEventListener("click", function () {
+        document.querySelectorAll(".final-probability-input").forEach(function (input) {
+          if (input.value.trim() !== "") {
+            return;
+          }
+          var slider = document.getElementById(input.dataset.sliderId);
+          if (!slider) {
+            return;
+          }
+          applySuggested(input, slider, slider.dataset.suggested || "");
+        });
+      });
+    }
+    var clearAll = document.getElementById("clear_all_finals");
+    if (clearAll) {
+      clearAll.addEventListener("click", function () {
+        document.querySelectorAll(".final-probability-input").forEach(function (input) {
+          var slider = document.getElementById(input.dataset.sliderId);
+          if (slider) {
+            clearFinal(input, slider);
+          } else {
+            input.value = "";
+          }
+        });
+      });
+    }
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", syncFinalProbabilityControls);

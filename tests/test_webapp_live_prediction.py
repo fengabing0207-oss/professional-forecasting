@@ -72,6 +72,10 @@ def test_live_route_get_with_question_snapshot_renders_cards(monkeypatch, tmp_pa
     assert b'id="final_probability_percent_0"' in response.data
     assert b'id="final_probability_slider_0"' in response.data
     assert b"syncFinalProbabilityControls" in response.data
+    assert b"Apply assistant suggestions to all blank finals" in response.data
+    assert b"Clear all finals" in response.data
+    assert b"Use suggested" in response.data
+    assert b"Clear final" in response.data
     body = response.data.decode("utf-8")
     first_input = _input_tag(body, "final_probability_percent_0")
     second_input = _input_tag(body, "final_probability_percent_1")
@@ -79,10 +83,17 @@ def test_live_route_get_with_question_snapshot_renders_cards(monkeypatch, tmp_pa
     assert 'value=""' in second_input
     assert 'value="51"' not in first_input
     assert 'value="51"' not in second_input
+    assert '<form method="post" autocomplete="off">' in body
     assert 'autocomplete="off"' in body
     assert 'autocomplete="off"' in first_input
     assert 'data-server-final=""' in first_input
     assert 'data-final-state="blank"' in first_input
+    assert 'id="apply_suggestions_to_blank"' in body
+    assert 'id="clear_all_finals"' in body
+    assert 'class="use-suggested-final"' in body
+    assert 'class="clear-final"' in body
+    assert "applySuggested(input, slider" in body
+    assert "clearFinal(input, slider)" in body
 
 
 def test_suggested_probability_does_not_become_final_on_get(monkeypatch, tmp_path):
@@ -103,6 +114,8 @@ def test_suggested_probability_does_not_become_final_on_get(monkeypatch, tmp_pat
     assert 'data-server-final=""' in final_input
     assert 'data-suggested="50"' in slider_input
     assert 'value="50"' in slider_input
+    assert 'class="use-suggested-final"' in body
+    assert 'data-suggested="50"' in body
 
 
 def test_live_route_get_prefills_latest_context_snapshot(monkeypatch, tmp_path):
